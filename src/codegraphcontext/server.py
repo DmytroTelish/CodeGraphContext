@@ -627,7 +627,14 @@ class MCPServer:
         }
         handler = tool_map.get(tool_name)
         if handler:
-            result = await asyncio.to_thread(handler, **args)
+            async def invoke_handler():
+                return await asyncio.to_thread(handler, **args)
+
+            if self._tool_call_lock is not None:
+                async with self._tool_call_lock:
+                    result = await invoke_handler()
+            else:
+                result = await invoke_handler()
 
             if self._context_note_pending and tool_name not in (
                 "discover_codegraph_contexts", "switch_context"
