@@ -41,14 +41,16 @@ class FalkorDBRemoteManager:
     _graph = None
     _lock = threading.Lock()
 
-    def __new__(cls):
+    def __new__(cls, *args, **kwargs):
+        # Accept and ignore __init__ args here; the singleton only cares about
+        # class identity, but Python still routes positional/keyword args here.
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = super(FalkorDBRemoteManager, cls).__new__(cls)
         return cls._instance
 
-    def __init__(self):
+    def __init__(self, graph_name: Optional[str] = None):
         if hasattr(self, '_initialized'):
             return
 
@@ -57,7 +59,10 @@ class FalkorDBRemoteManager:
         self.password = os.getenv('FALKORDB_PASSWORD') or None
         self.username = os.getenv('FALKORDB_USERNAME') or None
         self.ssl = os.getenv('FALKORDB_SSL', 'false').lower() in ('true', '1', 'yes')
-        self.graph_name = os.getenv('FALKORDB_GRAPH_NAME', 'codegraph')
+        # graph_name precedence: explicit constructor arg → env var → 'codegraph'.
+        # The explicit arg path is how a named context's graph_name (from
+        # config.yaml) is threaded in to override the env-var fallback.
+        self.graph_name = graph_name or os.getenv('FALKORDB_GRAPH_NAME', 'codegraph')
         self._initialized = True
 
         atexit.register(self.shutdown)

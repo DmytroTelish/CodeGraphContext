@@ -67,7 +67,10 @@ def _is_nornic_configured() -> bool:
         os.getenv('NORNIC_PASSWORD')
     ])
 
-def get_database_manager(db_path: Optional[str] = None) -> Union['DatabaseManager', 'FalkorDBManager', 'FalkorDBRemoteManager', 'KuzuDBManager', 'NornicDBManager', 'LadybugDBManager']:
+def get_database_manager(
+    db_path: Optional[str] = None,
+    graph_name: Optional[str] = None,
+) -> Union['DatabaseManager', 'FalkorDBManager', 'FalkorDBRemoteManager', 'KuzuDBManager', 'NornicDBManager', 'LadybugDBManager']:
     """
     Factory function to get the appropriate database manager based on configuration.
 
@@ -76,6 +79,12 @@ def get_database_manager(db_path: Optional[str] = None) -> Union['DatabaseManage
     2. Configured default: ``DEFAULT_DATABASE`` (``cgc config db …``, CodeGraphContext ``.env``).
     3. Implicit: ``FALKORDB_HOST`` → remote FalkorDB; else Unix → FalkorDB Lite when available,
        then KùzuDB; Windows → KùzuDB first; Neo4j if configured.
+
+    ``graph_name`` (FalkorDB backends only): the named graph inside the FalkorDB
+    instance to use. When set, overrides the ``FALKORDB_GRAPH_NAME`` env var.
+    This is the mechanism that lets named contexts own isolated graphs in a
+    single shared FalkorDB host (see ``cgc context fork``). Other backends
+    ignore this parameter.
     """
     from codegraphcontext.utils.debug_log import info_logger
 
@@ -100,7 +109,7 @@ def get_database_manager(db_path: Optional[str] = None) -> Union['DatabaseManage
             
             from .database_falkordb import FalkorDBManager, FalkorDBUnavailableError
             try:
-                mgr = FalkorDBManager(db_path=db_path)
+                mgr = FalkorDBManager(db_path=db_path, graph_name=graph_name)
                 info_logger(f"Using FalkorDB Lite (explicit) at {db_path or 'default path'}")
                 return mgr
             except FalkorDBUnavailableError as falkor_err:
@@ -118,7 +127,7 @@ def get_database_manager(db_path: Optional[str] = None) -> Union['DatabaseManage
                 )
             from .database_falkordb_remote import FalkorDBRemoteManager
             info_logger("Using remote FalkorDB (explicit)")
-            return FalkorDBRemoteManager()
+            return FalkorDBRemoteManager(graph_name=graph_name)
 
         elif db_type == 'neo4j':
             if not _is_neo4j_configured():
@@ -146,13 +155,13 @@ def get_database_manager(db_path: Optional[str] = None) -> Union['DatabaseManage
     if _is_falkordb_remote_configured():
         from .database_falkordb_remote import FalkorDBRemoteManager
         info_logger("Using remote FalkorDB (auto-detected via FALKORDB_HOST)")
-        return FalkorDBRemoteManager()
+        return FalkorDBRemoteManager(graph_name=graph_name)
 
     # Implicit: FalkorDB Lite on Unix when available (typical embedded default there)
     if _is_falkordb_available():
         from .database_falkordb import FalkorDBManager, FalkorDBUnavailableError
         try:
-            mgr = FalkorDBManager(db_path=db_path)
+            mgr = FalkorDBManager(db_path=db_path, graph_name=graph_name)
             info_logger(f"Using FalkorDB Lite (default) at {db_path or 'default path'}")
             return mgr
         except FalkorDBUnavailableError as falkor_err:
