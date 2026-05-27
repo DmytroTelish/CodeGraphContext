@@ -654,6 +654,84 @@ class MCPServer:
         else:
             return {"error": f"Unknown tool: {tool_name}"}
 
+    async def process_jsonrpc_request(
+        self, request: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Process a single JSON-RPC request and return a response payload, if any.
+
+        Returns None for notifications (no id) or methods that produce no response.
+        Internal errors are caught and converted to a -32603 error response so
+        callers (stdio loop or socket daemon) don't have to duplicate the try/except.
+        """
+        try:
+            method = request.get('method')
+            params = request.get('params', {})
+            request_id = request.get('id')
+
+            response = {}
+            # Route the request based on the JSON-RPC method.
+            if method == 'initialize':
+                response = {
+                    "jsonrpc": "2.0", "id": request_id,
+                    "result": {
+                        "protocolVersion": "2025-03-26",
+                        "serverInfo": {
+                            "name": "CodeGraphContext", "version": self._get_version(),
+                            "instructionsAvailable": True
+                        },
+                        "capabilities": {"tools": {"listTools": True}},
+                        "instructions": LLM_SYSTEM_PROMPT,
+                    }
+                }
+            elif method == 'tools/list':
+                # Return the list of tools defined in _init_tools.
+                response = {
+                    "jsonrpc": "2.0", "id": request_id,
+                    "result": {"tools": list(self.tools.values())}
+                }
+            elif method == 'tools/call':
+                # Execute a tool call and return the result.
+                tool_name = params.get('name')
+                args = params.get('arguments', {})
+                result = await self.handle_tool_call(tool_name, args)
+                result = _strip_workspace_prefix(result)
+
+                if "error" in result:
+                    response = {
+                        "jsonrpc": "2.0", "id": request_id,
+                        "error": {"code": -32000, "message": "Tool execution error", "data": result}
+                    }
+                else:
+                    response_text = json.dumps(result, indent=2)
+                    response_text = _apply_response_token_limit(tool_name, response_text)
+                    response = {
+                        "jsonrpc": "2.0", "id": request_id,
+                        "result": {"content": [{"type": "text", "text": response_text}]}
+                    }
+            elif method == 'notifications/initialized':
+                # This is a notification, no response needed.
+                return None
+            else:
+                # Handle unknown methods.
+                if request_id is not None:
+                    response = {
+                        "jsonrpc": "2.0", "id": request_id,
+                        "error": {"code": -32601, "message": f"Method not found: {method}"}
+                    }
+
+            if request_id is not None and response:
+                return response
+            return None
+        except Exception as e:
+            error_logger(f"Error processing request: {e}\n{traceback.format_exc()}")
+            request_id = "unknown"
+            if isinstance(request, dict):
+                request_id = request.get('id', "unknown")
+            return {
+                "jsonrpc": "2.0", "id": request_id,
+                "error": {"code": -32603, "message": f"Internal error: {str(e)}", "data": traceback.format_exc()}
+            }
+
     async def run(self):
         """
         Runs the main server loop, listening for JSON-RPC requests from stdin.
@@ -661,7 +739,7 @@ class MCPServer:
         # info_logger("MCP Server is running. Waiting for requests...")
         print("MCP Server is running. Waiting for requests...", file=sys.stderr, flush=True)
         self.code_watcher.start()
-        
+
         loop = asyncio.get_event_loop()
         try:
             await self._run_loop(loop)
@@ -684,66 +762,12 @@ class MCPServer:
                 if not line:
                     debug_logger("Client disconnected (EOF received). Shutting down.")
                     break
-                
-                request = json.loads(line.strip())
-                method = request.get('method')
-                params = request.get('params', {})
-                request_id = request.get('id')
-                request_count += 1
-                
-                response = {}
-                # Route the request based on the JSON-RPC method.
-                if method == 'initialize':
-                    response = {
-                        "jsonrpc": "2.0", "id": request_id,
-                        "result": {
-                            "protocolVersion": "2025-03-26",
-                            "serverInfo": {
-                                "name": "CodeGraphContext", "version": self._get_version(),
-                                "instructionsAvailable": True
-                            },
-                            "capabilities": {"tools": {"listTools": True}},
-                            "instructions": LLM_SYSTEM_PROMPT,
-                        }
-                    }
-                elif method == 'tools/list':
-                    # Return the list of tools defined in _init_tools.
-                    response = {
-                        "jsonrpc": "2.0", "id": request_id,
-                        "result": {"tools": list(self.tools.values())}
-                    }
-                elif method == 'tools/call':
-                    # Execute a tool call and return the result.
-                    tool_name = params.get('name')
-                    args = params.get('arguments', {})
-                    result = await self.handle_tool_call(tool_name, args)
-                    result = _strip_workspace_prefix(result)
 
-                    if "error" in result:
-                        response = {
-                            "jsonrpc": "2.0", "id": request_id,
-                            "error": {"code": -32000, "message": "Tool execution error", "data": result}
-                        }
-                    else:
-                        response_text = json.dumps(result, indent=2)
-                        response_text = _apply_response_token_limit(tool_name, response_text)
-                        response = {
-                            "jsonrpc": "2.0", "id": request_id,
-                            "result": {"content": [{"type": "text", "text": response_text}]}
-                        }
-                elif method == 'notifications/initialized':
-                    # This is a notification, no response needed.
-                    pass
-                else:
-                    # Handle unknown methods.
-                    if request_id is not None:
-                        response = {
-                            "jsonrpc": "2.0", "id": request_id,
-                            "error": {"code": -32601, "message": f"Method not found: {method}"}
-                        }
-                
-                # Send the response to standard output if it's not a notification.
-                if request_id is not None and response:
+                request_count += 1
+                request = json.loads(line.strip())
+                response = await self.process_jsonrpc_request(request)
+
+                if response:
                     print(json.dumps(response), flush=True)
 
             except Exception as e:
