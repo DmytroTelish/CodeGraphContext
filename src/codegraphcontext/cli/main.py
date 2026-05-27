@@ -23,6 +23,13 @@ from importlib.metadata import version as pkg_version, PackageNotFoundError
 
 from codegraphcontext.server import MCPServer
 from codegraphcontext.core.database import DatabaseManager
+from codegraphcontext.mcp_daemon import (
+    DEFAULT_DAEMON_LOG_PATH,
+    DEFAULT_DAEMON_SOCKET_PATH,
+    ensure_daemon_running,
+    run_mcp_daemon,
+    run_stdio_proxy,
+)
 from .setup_wizard import run_neo4j_setup_wizard, configure_mcp_client
 from . import config_manager
 # Import the new helper functions
@@ -148,6 +155,27 @@ def mcp_start():
         if server:
             server.shutdown()
         loop.close()
+
+@mcp_app.command("daemon")
+def mcp_daemon(
+    socket_path: str = typer.Option(
+        DEFAULT_DAEMON_SOCKET_PATH,
+        "--socket-path",
+        help="Unix socket path for the shared MCP daemon.",
+    ),
+):
+    """Start a shared local MCP daemon over a Unix socket."""
+    _load_credentials()
+    console.print(
+        f"[bold green]Starting CodeGraphContext MCP daemon on {socket_path}...[/bold green]"
+    )
+    try:
+        asyncio.run(run_mcp_daemon(socket_path))
+    except RuntimeError as e:
+        console.print(f"[bold red]Daemon Error:[/bold red] {e}")
+        raise typer.Exit(code=1)
+    except KeyboardInterrupt:
+        console.print("\n[bold yellow]Daemon stopped by user.[/bold yellow]")
 
 @mcp_app.command("tools")
 def mcp_tools():
