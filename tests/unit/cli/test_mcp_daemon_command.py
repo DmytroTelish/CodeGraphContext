@@ -7,8 +7,12 @@ from codegraphcontext.cli.main import app
 
 
 def test_cgc_mcp_daemon_help_lists_socket_path_option():
+    # NO_COLOR + TERM=dumb disables rich's ANSI escape codes, which otherwise
+    # split flag names like `--socket-path` across escape sequences in CI's narrow terminal.
     runner = CliRunner()
-    result = runner.invoke(app, ["mcp", "daemon", "--help"])
+    result = runner.invoke(
+        app, ["mcp", "daemon", "--help"], env={"NO_COLOR": "1", "TERM": "dumb"}
+    )
     assert result.exit_code == 0
     assert "--socket-path" in result.output
 

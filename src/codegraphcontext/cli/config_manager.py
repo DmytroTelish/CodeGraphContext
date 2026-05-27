@@ -703,6 +703,19 @@ class ContextInfo:
     db_path: str = ""                    # resolved at init if empty
     repos: List[str] = field(default_factory=list)
     cgcignore_path: str = ""            # resolved at init if empty
+    # graph_name overrides FALKORDB_GRAPH_NAME when this context is active.
+    # Empty string means "use env var fallback" (current behavior). Set this
+    # to give a context its own isolated FalkorDB graph for fork/clone workflows.
+    graph_name: str = ""
+    # repo_path is the worktree the context is bound to. Used by `cgc context fork`
+    # for source/target path rewriting and by `cgc context refresh` to know what
+    # to re-index. Empty means "no bound worktree" (the context isn't pinned).
+    repo_path: str = ""
+    # created_via_fork records whether the context was created by `cgc context fork`.
+    # When true, `cgc context delete` automatically drops the underlying graph data
+    # to avoid orphaning per-feature copies. Non-fork contexts preserve their
+    # graph data on delete (existing behavior).
+    created_via_fork: bool = False
 
 
 @dataclass
@@ -779,6 +792,11 @@ def load_context_config() -> ContextConfig:
                 cgcignore_path=meta.get("cgcignore_path") or str(
                     CONFIG_DIR / "contexts" / name / ".cgcignore"
                 ),
+                # New fork-aware fields (default to safe empty/False values for
+                # configs persisted before these fields were introduced).
+                graph_name=meta.get("graph_name", "") or "",
+                repo_path=meta.get("repo_path", "") or "",
+                created_via_fork=bool(meta.get("created_via_fork", False)),
             )
             contexts[name] = ctx
 
@@ -799,12 +817,21 @@ def save_context_config(cfg: ContextConfig) -> None:
 
     contexts_raw: Dict[str, Any] = {}
     for name, ctx in cfg.contexts.items():
-        contexts_raw[name] = {
+        entry: Dict[str, Any] = {
             "database": ctx.database,
             "db_path": ctx.db_path,
             "repos": ctx.repos,
             "cgcignore_path": ctx.cgcignore_path,
         }
+        # Only persist the new fields when they hold non-default values, so the
+        # on-disk YAML stays clean for the common case (no fork, no pinning).
+        if ctx.graph_name:
+            entry["graph_name"] = ctx.graph_name
+        if ctx.repo_path:
+            entry["repo_path"] = ctx.repo_path
+        if ctx.created_via_fork:
+            entry["created_via_fork"] = True
+        contexts_raw[name] = entry
 
     raw = {
         "version": cfg.version,
@@ -835,6 +862,11 @@ class ResolvedContext:
     db_path: str          # absolute path to the DB directory
     cgcignore_path: str   # path to the applicable .cgcignore
     is_local: bool = False  # True when a local .codegraphcontext/ was found
+    # graph_name lets a named context point at a specific FalkorDB graph.
+    # Empty means "use FALKORDB_GRAPH_NAME env var fallback" (existing behavior).
+    # Populated for named contexts that own a dedicated graph (created via
+    # `cgc context fork` or `cgc context create --graph-name <name>`).
+    graph_name: str = ""
 
 
 def find_local_cgc_dir(start: Optional[Path] = None) -> Optional[Path]:
@@ -886,6 +918,7 @@ def resolve_context(
             database=ctx.database,
             db_path=ctx.db_path,
             cgcignore_path=ctx.cgcignore_path,
+            graph_name=ctx.graph_name if ctx else "",
         )
 
     # --- 2. Local .codegraphcontext/ in repo (per-repo mode only) ---
@@ -977,6 +1010,7 @@ def resolve_context(
                 database=db,
                 db_path=db_path,
                 cgcignore_path=cgcignore,
+                graph_name=ctx.graph_name if ctx else "",
             )
 
     # --- 4. Global fallback ---
@@ -998,8 +1032,22 @@ def create_context(
     name: str,
     database: str = "falkordb",
     db_path: Optional[str] = None,
+    graph_name: Optional[str] = None,
+    repo_path: Optional[str] = None,
+    created_via_fork: bool = False,
 ) -> bool:
-    """Create a new named context. Returns True on success."""
+    """Create a new named context. Returns True on success.
+
+    ``graph_name``: FalkorDB graph identifier this context owns. Required for
+      multi-graph isolation on a shared FalkorDB host. When empty, the context
+      falls back to the FALKORDB_GRAPH_NAME env var at query time.
+    ``repo_path``: absolute path to the worktree this context is bound to.
+      Used by ``cgc context fork`` (for path rewriting) and ``cgc context
+      refresh`` (to know what to re-index).
+    ``created_via_fork``: internal flag set by ``cgc context fork``. When True,
+      ``cgc context delete`` will auto-purge the underlying FalkorDB graph
+      to avoid orphan data.
+    """
     cfg = load_context_config()
     if name in cfg.contexts:
         console.print(f"[yellow]Context '{name}' already exists.[/yellow]")
@@ -1018,10 +1066,17 @@ def create_context(
         db_path=resolved_db_path,
         repos=[],
         cgcignore_path=cgcignore,
+        graph_name=graph_name or "",
+        repo_path=repo_path or "",
+        created_via_fork=created_via_fork,
     )
     save_context_config(cfg)
     console.print(f"[green]✅ Created context '{name}' (DB: {database})[/green]")
     console.print(f"   [dim]DB path: {resolved_db_path}[/dim]")
+    if graph_name:
+        console.print(f"   [dim]Graph name: {graph_name}[/dim]")
+    if repo_path:
+        console.print(f"   [dim]Bound to worktree: {repo_path}[/dim]")
     return True
 
 

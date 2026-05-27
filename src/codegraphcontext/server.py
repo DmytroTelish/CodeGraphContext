@@ -175,7 +175,10 @@ class MCPServer:
             if ctx.database:
                 os.environ['CGC_RUNTIME_DB_TYPE'] = ctx.database
 
-            self.db_manager = get_database_manager(db_path=ctx.db_path)
+            self.db_manager = get_database_manager(
+                db_path=ctx.db_path,
+                graph_name=ctx.graph_name or None,
+            )
             self.db_manager.get_driver()
 
             if not ctx.is_local:

@@ -92,11 +92,18 @@ class FalkorDBManager:
                     cls._instance = super(FalkorDBManager, cls).__new__(cls)
         return cls._instance
 
-    def __init__(self, db_path: Optional[str] = None, socket_path: Optional[str] = None):
+    def __init__(self, db_path: Optional[str] = None, socket_path: Optional[str] = None, graph_name: Optional[str] = None):
         """
         Initializes the manager with default database path or explicit overrides.
         The `_initialized` flag prevents re-initialization on subsequent calls.
+
+        ``graph_name``: optional FalkorDB graph identifier. When set, overrides
+        the ``FALKORDB_GRAPH_NAME`` env-var fallback. This is how named contexts
+        with their own dedicated graph (e.g. via ``cgc context fork``) thread
+        their graph identity in.
         """
+        self._explicit_graph_name = graph_name
+
         # Configuration priority:
         # 1. Environment variable (highest priority)
         # 2. Config manager (supports project-local .env)
@@ -145,7 +152,10 @@ class FalkorDBManager:
             )
         self.socket_path = os.path.abspath(self.socket_path)
         
-        self.graph_name = os.getenv('FALKORDB_GRAPH_NAME', 'codegraph')
+        # graph_name precedence: explicit constructor arg → env var → 'codegraph'.
+        # The explicit arg path is how named contexts (e.g. created via
+        # `cgc context fork`) thread in their dedicated graph identifier.
+        self.graph_name = self._explicit_graph_name or os.getenv('FALKORDB_GRAPH_NAME', 'codegraph')
         self._initialized = True
 
         if not getattr(self, "_atexit_registered", False):
