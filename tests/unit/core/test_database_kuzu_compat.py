@@ -237,3 +237,64 @@ def test_inheritance_queries_bypass_fail_fast_guard():
         "inheritance_resolution",
         Exception("Binder exception: Create rel  bound by multiple node labels is not supported."),
     )
+
+
+def test_unwind_uid_seen_set_resets_per_merge_statement():
+    """Two MERGE statements in one query must each get their own collision tracker."""
+    conn = _FakeConn()
+    session = KuzuSessionWrapper(conn)
+    # Two MERGE statements, each with its own pair of colliding rows.
+    row_x = {"name": "$n", "line_number": None, "source": "x"}
+    row_y = {"name": "$n", "line_number": None, "source": "y"}
+    session.run(
+        """
+        UNWIND $batch AS row
+        MERGE (n:Function {name: row.name, path: $file_path, line_number: row.line_number})
+        MERGE (m:Class    {name: row.name, path: $file_path, line_number: row.line_number})
+        SET n += row
+        """,
+        file_path="/repo/a.py",
+        batch=[row_x, row_y],
+    )
+    _translated, params = conn.queries[0]
+    # Both rows now have uid set. Inspect what _translate_query stored on them.
+    # Because there are two MERGE statements, each MERGE's collision loop runs in
+    # sequence and the second one overwrites item['uid']. We can't observe per-MERGE
+    # uids from params, but we CAN assert the final uid on each row is the one the
+    # SECOND MERGE assigned (which is itself consistent — row_x raw, row_y suffixed).
+    uids = {r["source"]: r["uid"] for r in params["batch"]}
+    assert uids["x"] == "$n/repo/a.py-1", uids
+    # row_y must have a hex suffix because it collided with row_x within the SECOND MERGE
+    # (and within the first too — both MERGEs see the same collision pattern). The
+    # critical invariant is the second MERGE ran its OWN seen_uids; if it had inherited
+    # state from the first MERGE, row_x in the second pass would also have been suffixed.
+    import re
+    assert re.search(r"#[0-9a-f]{8}$", uids["y"]), uids
+
+
+def test_unwind_uid_mixed_batch_only_suffixes_colliders():
+    """Non-colliding rows in a mixed batch must keep their raw UID; only colliders get suffixed."""
+    conn = _FakeConn()
+    session = KuzuSessionWrapper(conn)
+    # Three rows: two collide on (name="$n", line_number=None), one is unique.
+    row_collider_1 = {"name": "$n", "line_number": None, "source": "c1"}
+    row_collider_2 = {"name": "$n", "line_number": None, "source": "c2"}
+    row_unique     = {"name": "foo", "line_number": 42,   "source": "u"}
+    session.run(
+        """
+        UNWIND $batch AS row
+        MERGE (n:Function {name: row.name, path: $file_path, line_number: row.line_number})
+        SET n += row
+        """,
+        file_path="/repo/a.py",
+        batch=[row_collider_1, row_unique, row_collider_2],
+    )
+    _translated, params = conn.queries[0]
+    uids = {r["source"]: r["uid"] for r in params["batch"]}
+    # collider_1 is the first occurrence of its raw UID → no suffix.
+    assert uids["c1"] == "$n/repo/a.py-1", uids
+    # unique row has a different raw UID → no collision → no suffix.
+    assert uids["u"] == "foo/repo/a.py42", uids
+    # collider_2 hits a collision with collider_1 → gets a hex suffix.
+    import re
+    assert re.search(r"^\$n/repo/a\.py-1#[0-9a-f]{8}$", uids["c2"]), uids
