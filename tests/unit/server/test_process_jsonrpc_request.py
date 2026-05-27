@@ -47,3 +47,55 @@ async def test_process_jsonrpc_initialized_notification_returns_none(server):
     request = {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}}
     response = await server.process_jsonrpc_request(request)
     assert response is None
+
+
+@pytest.mark.asyncio
+async def test_process_jsonrpc_tools_call_happy_path(server, monkeypatch):
+    """tools/call routes to handle_tool_call and wraps result as MCP content."""
+    async def fake_handle(_name, _args):
+        return {"data": "result-payload"}
+    monkeypatch.setattr(server, "handle_tool_call", fake_handle)
+    request = {
+        "jsonrpc": "2.0",
+        "id": 10,
+        "method": "tools/call",
+        "params": {"name": "list_jobs", "arguments": {}},
+    }
+    response = await server.process_jsonrpc_request(request)
+    assert response["id"] == 10
+    assert "result" in response
+    assert response["result"]["content"][0]["type"] == "text"
+    assert "result-payload" in response["result"]["content"][0]["text"]
+
+
+@pytest.mark.asyncio
+async def test_process_jsonrpc_tools_call_error_returns_minus_32000(server, monkeypatch):
+    """When handle_tool_call returns {error: ...}, response carries -32000 with the error data."""
+    async def fake_handle(_name, _args):
+        return {"error": "Unknown tool: foo"}
+    monkeypatch.setattr(server, "handle_tool_call", fake_handle)
+    request = {
+        "jsonrpc": "2.0",
+        "id": 11,
+        "method": "tools/call",
+        "params": {"name": "foo", "arguments": {}},
+    }
+    response = await server.process_jsonrpc_request(request)
+    assert response["error"]["code"] == -32000
+
+
+@pytest.mark.asyncio
+async def test_process_jsonrpc_inner_exception_returns_minus_32603(server, monkeypatch):
+    """Handler raising inside dispatch must be caught and converted to -32603."""
+    async def fake_handle(_name, _args):
+        raise RuntimeError("simulated handler failure")
+    monkeypatch.setattr(server, "handle_tool_call", fake_handle)
+    request = {
+        "jsonrpc": "2.0",
+        "id": 12,
+        "method": "tools/call",
+        "params": {"name": "list_jobs", "arguments": {}},
+    }
+    response = await server.process_jsonrpc_request(request)
+    assert response["error"]["code"] == -32603
+    assert "simulated handler failure" in response["error"]["message"]
