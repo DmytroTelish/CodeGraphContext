@@ -575,6 +575,7 @@ def test_db_flag_kuzudb_not_overwritten_by_context_database(monkeypatch):
         database = "neo4j"
         db_path = None
         cgcignore_path = None
+        graph_name = ""
 
     class _FakeResult:
         def single(self):
