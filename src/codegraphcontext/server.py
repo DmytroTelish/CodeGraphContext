@@ -766,6 +766,7 @@ class MCPServer:
     async def _run_loop(self, loop):
         request_count = 0
         while True:
+            request = None  # reset per-iteration to avoid stale id from prior loop
             try:
                 if request_count and request_count % 50 == 0:
                     self.job_manager.cleanup_old_jobs(max_age_hours=24)
@@ -785,7 +786,7 @@ class MCPServer:
             except Exception as e:
                 error_logger(f"Error processing request: {e}\n{traceback.format_exc()}")
                 request_id = "unknown"
-                if 'request' in locals() and isinstance(request, dict):
+                if isinstance(request, dict):
                     request_id = request.get('id', "unknown")
 
                 error_response = {
