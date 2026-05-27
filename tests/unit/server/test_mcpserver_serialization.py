@@ -47,18 +47,18 @@ async def test_handle_tool_call_acquires_lock_when_enabled(tmp_path, monkeypatch
     server = MCPServer(loop=loop, cwd=tmp_path)
 
     # Patch one tool handler to record whether the lock was held during invocation.
-    held = {"value": False}
+    lock_states = []
 
     def fake_handler(**_args):
         # If the lock is locked when we're inside the handler, serialization worked.
-        held["value"] = server._tool_call_lock.locked()
+        lock_states.append(server._tool_call_lock.locked())
         return {"ok": True}
 
     server.list_jobs_tool = fake_handler  # type: ignore[assignment]
 
     result = await server.handle_tool_call("list_jobs", {})
     assert result == {"ok": True}
-    assert held["value"] is True
+    assert lock_states == [True]
 
 
 @pytest.mark.asyncio
