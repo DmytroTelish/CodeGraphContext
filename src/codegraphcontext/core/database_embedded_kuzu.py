@@ -883,8 +883,9 @@ class EmbeddedSessionWrapper:
 
                      pk_parts = self.uid_map[label]
                      all_ok = True
+                     seen_uids = set()
 
-                     for item in batch_data:
+                     for index, item in enumerate(batch_data):
                          uid_components = []
                          for part in pk_parts:
                              row_ref = re.search(
@@ -918,6 +919,13 @@ class EmbeddedSessionWrapper:
 
                          if all_ok:
                              raw_uid = ''.join(uid_components)
+                             if raw_uid in seen_uids:
+                                 # Composite key produced a duplicate UID for distinct rows
+                                 # (e.g. line_number=None normalized to -1). Disambiguate
+                                 # with the row index so MERGE doesn't collapse them, while
+                                 # preserving stable UIDs for non-colliding rows.
+                                 raw_uid = f"{raw_uid}#{index}"
+                             seen_uids.add(raw_uid)
                              item['uid'] = raw_uid
                          else:
                              all_ok = False
