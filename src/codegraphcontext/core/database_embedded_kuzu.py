@@ -922,9 +922,14 @@ class EmbeddedSessionWrapper:
                              if raw_uid in seen_uids:
                                  # Composite key produced a duplicate UID for distinct rows
                                  # (e.g. line_number=None normalized to -1). Disambiguate
-                                 # with the row index so MERGE doesn't collapse them, while
-                                 # preserving stable UIDs for non-colliding rows.
-                                 raw_uid = f"{raw_uid}#{index}"
+                                 # with a content-derived hash so the suffix depends on the
+                                 # row's own fields (not its batch position). Keeps UIDs
+                                 # stable across re-indexes that produce rows in different
+                                 # order.
+                                 row_digest = hashlib.md5(
+                                     json.dumps(item, sort_keys=True, default=str).encode()
+                                 ).hexdigest()[:8]
+                                 raw_uid = f"{raw_uid}#{row_digest}"
                              seen_uids.add(raw_uid)
                              item['uid'] = raw_uid
                          else:

@@ -199,6 +199,36 @@ def test_unwind_uid_injection_uses_fallback_for_missing_pk_fields():
     assert params["batch"][0]["uid"] != params["batch"][1]["uid"]
 
 
+def test_unwind_uid_collision_disambiguator_is_content_derived():
+    """When multiple rows collide, the disambiguating suffix must come from row content (not batch index)."""
+    conn = _FakeConn()
+    session = KuzuSessionWrapper(conn)
+    # Three rows that all produce identical raw composite keys.
+    row_x = {"name": "$n", "line_number": None, "source": "x"}
+    row_y = {"name": "$n", "line_number": None, "source": "y"}
+    row_z = {"name": "$n", "line_number": None, "source": "z"}
+    session.run(
+        """
+        UNWIND $batch AS row
+        MERGE (n:Function {name: row.name, path: $file_path, line_number: row.line_number})
+        SET n += row
+        """,
+        file_path="/repo/a.py",
+        batch=[row_x, row_y, row_z],
+    )
+    _translated, params = conn.queries[0]
+    # row_x is first → no suffix (no prior collision). row_y and row_z get suffixes.
+    uids_by_source = {r["source"]: r["uid"] for r in params["batch"]}
+    assert uids_by_source["x"] == "$n/repo/a.py-1", uids_by_source
+    # row_y and row_z suffixes must contain a hex digest (8 hex chars), not "#0"/"#1"/"#2".
+    import re
+    hex_suffix = re.compile(r"#[0-9a-f]{8}$")
+    assert hex_suffix.search(uids_by_source["y"]), f"row_y UID lacks hex suffix: {uids_by_source['y']}"
+    assert hex_suffix.search(uids_by_source["z"]), f"row_z UID lacks hex suffix: {uids_by_source['z']}"
+    # And the suffixes for y and z must DIFFER (content-derived from different sources).
+    assert uids_by_source["y"] != uids_by_source["z"]
+
+
 def test_inheritance_queries_bypass_fail_fast_guard():
     session = KuzuSessionWrapper(_FakeConn())
     q = "MATCH (a)-[:INHERITS]->(b) MERGE (a)-[:INHERITS]->(b)"
