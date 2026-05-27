@@ -659,9 +659,21 @@ class MCPServer:
     ) -> Optional[Dict[str, Any]]:
         """Process a single JSON-RPC request and return a response payload, if any.
 
-        Returns None for notifications (no id) or methods that produce no response.
-        Internal errors are caught and converted to a -32603 error response so
-        callers (stdio loop or socket daemon) don't have to duplicate the try/except.
+        The caller is responsible for transport: reading raw bytes, parsing JSON,
+        and writing the returned dict back. This method takes an already-parsed
+        request dict and never mutates it.
+
+        Loop/thread safety: this method awaits self.handle_tool_call, which acquires
+        self._tool_call_lock when CGC_SERIALIZE_TOOL_CALLS is set. The lock binds to
+        the loop on first use; callers from different event loops must construct
+        their own MCPServer instance rather than share one.
+
+        Returns None when the request is a JSON-RPC notification (no id field or
+        method == "notifications/initialized"). Returns an error response dict with
+        error.code == -32601 for unknown methods and -32603 for internal errors
+        (handler exceptions, malformed request dicts) caught inside this method.
+        Errors that escape this method (the caller's json.loads failing) are the
+        caller's responsibility.
         """
         try:
             method = request.get('method')
