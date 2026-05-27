@@ -146,7 +146,7 @@ def mcp_start(
     no_daemon: bool = typer.Option(
         False,
         "--no-daemon",
-        help="Force the legacy in-process stdio MCP server.",
+        help="Force the legacy in-process stdio MCP server (skip the daemon proxy even when --daemon-socket or env is set).",
     ),
 ):
     """Start the CodeGraphContext MCP server (stdio or daemon-proxy)."""
