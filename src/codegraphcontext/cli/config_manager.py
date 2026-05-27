@@ -790,6 +790,11 @@ class ResolvedContext:
     db_path: str          # absolute path to the DB directory
     cgcignore_path: str   # path to the applicable .cgcignore
     is_local: bool = False  # True when a local .codegraphcontext/ was found
+    # graph_name lets a named context point at a specific FalkorDB graph.
+    # Empty means "use FALKORDB_GRAPH_NAME env var fallback" (existing behavior).
+    # Populated for named contexts that own a dedicated graph (created via
+    # `cgc context fork` or `cgc context create --graph-name <name>`).
+    graph_name: str = ""
 
 
 def find_local_cgc_dir(start: Optional[Path] = None) -> Optional[Path]:
@@ -839,6 +844,7 @@ def resolve_context(
             database=db,
             db_path=db_path,
             cgcignore_path=cgcignore,
+            graph_name=ctx.graph_name if ctx else "",
         )
 
     # --- 2. Local .codegraphcontext/ in repo ---
@@ -915,6 +921,7 @@ def resolve_context(
                 database=db,
                 db_path=db_path,
                 cgcignore_path=cgcignore,
+                graph_name=ctx.graph_name if ctx else "",
             )
 
     # --- 4. Global fallback ---
