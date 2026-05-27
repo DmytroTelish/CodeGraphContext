@@ -312,11 +312,37 @@ def context_create(
     name: str = typer.Argument(..., help="Name of the new context"),
     database: str = typer.Option(None, "--database", "-d", help="Database backend (falkordb, kuzudb, neo4j). Defaults to DEFAULT_DATABASE from config."),
     db_path: str = typer.Option(None, "--db-path", help="Explicit path for the DB (defaults to ~/.codegraphcontext/contexts/<name>/db)"),
+    graph_name: str = typer.Option(
+        None,
+        "--graph-name",
+        help=(
+            "FalkorDB graph identifier this context owns (e.g. 'botty-stage-graph'). "
+            "Required for multi-graph isolation on a shared FalkorDB host — without it, "
+            "all contexts share one graph via the FALKORDB_GRAPH_NAME env var. "
+            "Ignored for non-FalkorDB backends."
+        ),
+    ),
+    repo_path: str = typer.Option(
+        None,
+        "--repo-path",
+        help=(
+            "Absolute path of the worktree this context is bound to. Used by "
+            "`cgc context fork` (for path rewriting) and `cgc context refresh` "
+            "(to know what to re-index). Optional; can be left unset for "
+            "non-pinned contexts."
+        ),
+    ),
 ):
     """Create a new logical context."""
     if database is None:
         database = config_manager.get_config_value("DEFAULT_DATABASE") or "falkordb"
-    config_manager.create_context(name, database, db_path)
+    config_manager.create_context(
+        name,
+        database,
+        db_path,
+        graph_name=graph_name,
+        repo_path=repo_path,
+    )
 
 @context_app.command("delete")
 def context_delete(
