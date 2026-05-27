@@ -58,8 +58,12 @@ def test_create_context_function_marks_created_via_fork_when_requested(tmp_path,
 
 
 def test_cli_context_create_help_lists_new_flags():
+    # NO_COLOR + TERM=dumb disables rich's ANSI escape codes, which otherwise
+    # split flag names like `--graph-name` across escape sequences in CI's narrow terminal.
     runner = CliRunner()
-    result = runner.invoke(app, ["context", "create", "--help"])
+    result = runner.invoke(
+        app, ["context", "create", "--help"], env={"NO_COLOR": "1", "TERM": "dumb"}
+    )
     assert result.exit_code == 0
     assert "--graph-name" in result.output
     assert "--repo-path" in result.output

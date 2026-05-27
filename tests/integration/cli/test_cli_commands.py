@@ -232,10 +232,27 @@ def kuzudb_env():
 def cli_test_stubs(monkeypatch, tmp_path):
     monkeypatch.setattr(cli_main.config_manager, "CONFIG_DIR", tmp_path)
     monkeypatch.setattr(cli_main.config_manager, "CONFIG_FILE", tmp_path / "config.json")
+    # Also redirect the context registry so context-create/delete/fork commands
+    # don't write to the developer's real ~/.codegraphcontext/config.yaml.
+    monkeypatch.setattr(
+        cli_main.config_manager, "CONTEXT_CONFIG_FILE", tmp_path / "context_config.yaml"
+    )
+    monkeypatch.setattr(
+        cli_main.config_manager,
+        "_LEGACY_CONTEXT_CONFIG_FILE",
+        tmp_path / "cgc_config.yaml",
+    )
+    monkeypatch.setattr(
+        cli_main.config_manager,
+        "_LEGACY_FALKORDB_PATH",
+        tmp_path / "global" / "falkordb.db",
+    )
 
     monkeypatch.setattr(cli_main, "_load_credentials", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(cli_main, "configure_mcp_client", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(cli_main, "run_neo4j_setup_wizard", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(cli_main, "run_mcp_daemon", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(cli_main.asyncio, "run", lambda *_args, **_kwargs: None)
 
     monkeypatch.setattr(cli_main, "index_helper", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(cli_main, "setup_scip_helper", lambda *_args, **_kwargs: None)
@@ -302,6 +319,15 @@ def cli_test_stubs(monkeypatch, tmp_path):
 
     monkeypatch.setattr(cli_main, "_write_datasource_graph", lambda *_args, **_kwargs: None)
 
+    # Stubs for `cgc context fork`: the command imports these lazily from
+    # codegraphcontext.core / codegraphcontext.core.graph_fork inside the function.
+    import codegraphcontext.core as cgc_core
+    import codegraphcontext.core.graph_fork as cgc_graph_fork
+
+    monkeypatch.setattr(cgc_core, "get_database_manager", lambda *_args, **_kwargs: MagicMock())
+    monkeypatch.setattr(cgc_graph_fork, "fork_graph", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(cgc_graph_fork, "rewrite_paths_in_graph", lambda *_args, **_kwargs: 0)
+
     datasource_pkg = types.ModuleType("codegraphcontext.tools.datasources")
     monkeypatch.setitem(sys.modules, "codegraphcontext.tools.datasources", datasource_pkg)
 
@@ -350,7 +376,7 @@ def test_cli_inventory_grouped_from_source():
     inventory = _inventory_from_main_source()
 
     assert {"root", "mcp", "neo4j", "config", "bundle", "registry", "find", "analyze"}.issubset(set(inventory.keys()))
-    assert inventory["mcp"] == {"setup", "start", "tools"}
+    assert inventory["mcp"] == {"setup", "start", "tools", "daemon"}
     assert inventory["neo4j"] == {"setup"}
     assert inventory["config"] == {"show", "set", "reset", "db"}
     assert inventory["bundle"] == {"export", "import", "load"}
@@ -373,7 +399,7 @@ def test_cli_inventory_grouped_from_source():
     if "datasource" in inventory:
         assert inventory["datasource"] == {"mysql", "cassandra", "redis"}
     if "context" in inventory:
-        assert inventory["context"] == {"list", "create", "delete", "mode", "default"}
+        assert inventory["context"] == {"list", "create", "delete", "mode", "default", "fork"}
 
 
 def test_all_canonical_cli_commands_run_with_kuzudb(kuzudb_env, cli_test_stubs):
@@ -384,6 +410,7 @@ def test_all_canonical_cli_commands_run_with_kuzudb(kuzudb_env, cli_test_stubs):
         ["mcp", "setup"],
         ["mcp", "start"],
         ["mcp", "tools"],
+        ["mcp", "daemon"],
         ["neo4j", "setup"],
         ["config", "show"],
         ["config", "set", "MAX_FILE_SIZE_MB", "11"],
@@ -453,6 +480,33 @@ def test_all_canonical_cli_commands_run_with_kuzudb(kuzudb_env, cli_test_stubs):
                 ["context", "default", "ci-context"],
             ]
         )
+        if "fork" in source_inventory["context"]:
+            # Seed a fork-able source context (falkordb-remote backend with graph_name)
+            # so `context fork` passes its source-validation step. The actual
+            # GRAPH.COPY / path-rewrite calls are stubbed via cli_test_stubs.
+            command_matrix.extend(
+                [
+                    [
+                        "context",
+                        "create",
+                        "ci-fork-src",
+                        "--database",
+                        "falkordb-remote",
+                        "--graph-name",
+                        "ci-fork-src-graph",
+                        "--repo-path",
+                        "/tmp/ci-fork-src",
+                    ],
+                    [
+                        "context",
+                        "fork",
+                        "ci-fork-src",
+                        "ci-fork-target",
+                        "--repo-path",
+                        "/tmp/ci-fork-target",
+                    ],
+                ]
+            )
     if "datasource" in source_inventory:
         command_matrix.extend(
             [

@@ -151,7 +151,11 @@ def test_delete_still_removes_registry_when_graph_purge_fails(tmp_path, monkeypa
 
 
 def test_delete_help_lists_keep_graph_flag():
+    # NO_COLOR + TERM=dumb disables rich's ANSI escape codes, which otherwise
+    # split flag names like `--keep-graph` across escape sequences in CI's narrow terminal.
     runner = CliRunner()
-    result = runner.invoke(app, ["context", "delete", "--help"])
+    result = runner.invoke(
+        app, ["context", "delete", "--help"], env={"NO_COLOR": "1", "TERM": "dumb"}
+    )
     assert result.exit_code == 0
     assert "--keep-graph" in result.output

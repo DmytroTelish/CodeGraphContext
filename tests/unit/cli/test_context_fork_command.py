@@ -198,8 +198,12 @@ def test_fork_errors_when_source_has_no_graph_name(tmp_path, monkeypatch):
 
 
 def test_fork_help_lists_all_flags():
+    # NO_COLOR + TERM=dumb disables rich's ANSI escape codes, which otherwise
+    # split flag names like `--repo-path` across escape sequences in CI's narrow terminal.
     runner = CliRunner()
-    result = runner.invoke(app, ["context", "fork", "--help"])
+    result = runner.invoke(
+        app, ["context", "fork", "--help"], env={"NO_COLOR": "1", "TERM": "dumb"}
+    )
     assert result.exit_code == 0
     assert "--repo-path" in result.output
     assert "--graph-name" in result.output
