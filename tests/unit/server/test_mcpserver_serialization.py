@@ -59,3 +59,39 @@ async def test_handle_tool_call_acquires_lock_when_enabled(tmp_path, monkeypatch
     result = await server.handle_tool_call("list_jobs", {})
     assert result == {"ok": True}
     assert held["value"] is True
+
+
+@pytest.mark.asyncio
+async def test_handle_tool_call_truly_serializes_concurrent_calls(tmp_path, monkeypatch):
+    """Two concurrent handle_tool_call invocations must execute serially."""
+    monkeypatch.setenv("CGC_RUNTIME_DB_TYPE", "kuzudb")
+    monkeypatch.setenv("KUZU_DB_PATH", str(tmp_path / "graph.kuzu"))
+    monkeypatch.setenv("CGC_SERIALIZE_TOOL_CALLS", "1")
+
+    loop = asyncio.get_running_loop()
+    server = MCPServer(loop=loop, cwd=tmp_path)
+
+    events = []
+
+    def slow_handler(*, call_id):
+        import time
+        events.append(("enter", call_id))
+        time.sleep(0.05)
+        events.append(("exit", call_id))
+        return {"call_id": call_id}
+
+    server.list_jobs_tool = slow_handler  # type: ignore[assignment]
+
+    results = await asyncio.gather(
+        server.handle_tool_call("list_jobs", {"call_id": 1}),
+        server.handle_tool_call("list_jobs", {"call_id": 2}),
+    )
+
+    assert {r["call_id"] for r in results} == {1, 2}
+    # Serialized: events look like [(enter, X), (exit, X), (enter, Y), (exit, Y)]
+    assert len(events) == 4
+    first_call = events[0][1]
+    assert events[1] == ("exit", first_call), f"Expected exit of {first_call} before any other enter, got {events}"
+    second_call = events[2][1]
+    assert events[3] == ("exit", second_call), f"Expected clean serial ordering, got {events}"
+    assert first_call != second_call
