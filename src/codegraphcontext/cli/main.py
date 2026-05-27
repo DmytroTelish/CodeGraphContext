@@ -127,16 +127,48 @@ def mcp_setup():
     configure_mcp_client()
 
 @mcp_app.command("start")
-def mcp_start():
-    """
-    Start the CodeGraphContext MCP server.
-    
-    Starts the server which listens for JSON-RPC requests from stdin.
-    This is used by IDE integrations (VS Code, Cursor, etc.).
-    """
+def mcp_start(
+    daemon_socket: Optional[str] = typer.Option(
+        None,
+        "--daemon-socket",
+        envvar="CGC_MCP_DAEMON_SOCKET",
+        help=(
+            "Proxy stdio MCP traffic through a shared local daemon at this Unix "
+            "socket. If the daemon is not running, start it automatically."
+        ),
+    ),
+    daemon_log_path: str = typer.Option(
+        DEFAULT_DAEMON_LOG_PATH,
+        "--daemon-log-path",
+        envvar="CGC_MCP_DAEMON_LOG_PATH",
+        help="Log file for an auto-started MCP daemon.",
+    ),
+    no_daemon: bool = typer.Option(
+        False,
+        "--no-daemon",
+        help="Force the legacy in-process stdio MCP server.",
+    ),
+):
+    """Start the CodeGraphContext MCP server (stdio or daemon-proxy)."""
     console.print("[bold green]Starting CodeGraphContext Server...[/bold green]")
     _load_credentials()
 
+    # If a daemon socket is configured (CLI flag or env) and --no-daemon wasn't passed,
+    # delegate stdio to a shared daemon via Unix socket.
+    daemon_socket = daemon_socket or DEFAULT_DAEMON_SOCKET_PATH
+    if not no_daemon and daemon_socket:
+        try:
+            run_stdio_proxy(
+                daemon_socket,
+                auto_start=True,
+                log_path=daemon_log_path,
+            )
+            return
+        except RuntimeError as e:
+            console.print(f"[bold red]Daemon Error:[/bold red] {e}")
+            raise typer.Exit(code=1)
+
+    # Fall-through: legacy in-process server (existing upstream behavior).
     server = None
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
