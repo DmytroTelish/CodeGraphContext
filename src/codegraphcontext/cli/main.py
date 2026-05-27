@@ -346,11 +346,83 @@ def context_create(
 
 @context_app.command("delete")
 def context_delete(
-    name: str = typer.Argument(..., help="Name of the context to delete")
+    name: str = typer.Argument(..., help="Name of the context to delete"),
+    keep_graph: bool = typer.Option(
+        False,
+        "--keep-graph",
+        help=(
+            "For fork-created contexts only: skip the automatic GRAPH.DELETE of the "
+            "underlying FalkorDB graph. Normally fork-created contexts purge their "
+            "graph on delete to avoid orphan data; pass this flag to preserve it "
+            "(e.g. you want to inspect the graph after deleting the registry entry)."
+        ),
+    ),
 ):
-    """Delete a context from the registry."""
-    if typer.confirm(f"Are you sure you want to delete context '{name}'? DB files will remain on disk."):
-        config_manager.delete_context(name)
+    """Delete a context from the registry.
+
+    For contexts created via `cgc context fork`, the underlying FalkorDB
+    graph is also deleted by default (GRAPH.DELETE), so the cloned data
+    doesn't pile up as orphan graphs. Pass --keep-graph to preserve the
+    graph data while still removing the registry entry.
+
+    Contexts created normally (not via fork) preserve their DB files and
+    graph data on delete; this matches the pre-fork behavior.
+    """
+    cfg = config_manager.load_context_config()
+    ctx = cfg.contexts.get(name)
+    is_fork = bool(ctx and ctx.created_via_fork)
+    will_purge_graph = is_fork and not keep_graph and bool(ctx.graph_name) and ctx.database.startswith("falkordb")
+
+    if will_purge_graph:
+        prompt = (
+            f"Context '{name}' was created via fork. "
+            f"Confirm delete — this will also DROP the FalkorDB graph '{ctx.graph_name}' "
+            "(cloned data, not the source). "
+            "Pass --keep-graph to skip the graph drop."
+        )
+    else:
+        prompt = f"Are you sure you want to delete context '{name}'? DB files will remain on disk."
+
+    if not typer.confirm(prompt):
+        return
+
+    # Purge the cloned graph BEFORE removing the registry entry. If purge fails,
+    # the registry entry still gets removed below (we'd rather lose track of the
+    # orphan graph than have a half-deleted state).
+    if will_purge_graph:
+        try:
+            from codegraphcontext.core import get_database_manager
+            from codegraphcontext.core.graph_fork import GraphForkError, delete_graph
+
+            _load_credentials()
+            # Reset FalkorDB singletons so we connect with whatever graph_name the
+            # singleton happens to have — for GRAPH.DELETE we don't need a specific
+            # graph binding, just any redis connection to the same FalkorDB host.
+            try:
+                from codegraphcontext.core.database_falkordb_remote import FalkorDBRemoteManager
+                FalkorDBRemoteManager._instance = None
+            except ImportError:
+                pass
+            try:
+                from codegraphcontext.core.database_falkordb import FalkorDBManager
+                FalkorDBManager._instance = None
+            except ImportError:
+                pass
+            db_manager = get_database_manager()
+            delete_graph(db_manager, ctx.graph_name)
+            console.print(f"[green]✓[/green] Dropped FalkorDB graph '{ctx.graph_name}'")
+        except GraphForkError as exc:
+            console.print(
+                f"[yellow]Warning:[/yellow] could not drop FalkorDB graph '{ctx.graph_name}': {exc}\n"
+                "[dim]The registry entry will still be removed.[/dim]"
+            )
+        except Exception as exc:  # pragma: no cover — defensive, unexpected errors
+            console.print(
+                f"[yellow]Warning:[/yellow] unexpected error dropping graph: {exc}\n"
+                "[dim]The registry entry will still be removed.[/dim]"
+            )
+
+    config_manager.delete_context(name)
 
 
 @context_app.command("fork")
