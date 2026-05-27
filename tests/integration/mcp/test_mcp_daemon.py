@@ -1,6 +1,7 @@
 import asyncio
 import json
-import os
+import shutil
+import tempfile
 from contextlib import suppress
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -10,10 +11,25 @@ import pytest
 from codegraphcontext.mcp_daemon import run_mcp_daemon
 
 
+@pytest.fixture
+def short_socket_dir():
+    """Per-test Unix socket dir rooted in /tmp.
+
+    AF_UNIX paths are limited to ~104 bytes on macOS / Linux; pytest's
+    tmp_path resolves under /var/folders/.../pytest-of-USER/... which
+    blows that limit. Root the temp dir in /tmp instead so the socket
+    path stays short.
+    """
+    path = Path(tempfile.mkdtemp(prefix="cgc-d-", dir="/tmp"))
+    try:
+        yield path
+    finally:
+        shutil.rmtree(path, ignore_errors=True)
+
+
 @pytest.mark.asyncio
-async def test_run_mcp_daemon_serves_jsonrpc_over_unix_socket(tmp_path):
-    socket_path = Path(f"/tmp/cgc-daemon-test-{os.getpid()}.sock")
-    socket_path.unlink(missing_ok=True)
+async def test_run_mcp_daemon_serves_jsonrpc_over_unix_socket(short_socket_dir):
+    socket_path = short_socket_dir / "daemon.sock"
     fake_server = MagicMock()
     fake_server.code_watcher = MagicMock()
     process_mock = MagicMock(
