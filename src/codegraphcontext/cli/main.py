@@ -352,6 +352,157 @@ def context_delete(
     if typer.confirm(f"Are you sure you want to delete context '{name}'? DB files will remain on disk."):
         config_manager.delete_context(name)
 
+
+@context_app.command("fork")
+def context_fork(
+    source: str = typer.Argument(..., help="Name of the source context to clone from."),
+    target: str = typer.Argument(..., help="Name of the new context to create."),
+    repo_path: str = typer.Option(
+        None,
+        "--repo-path",
+        help=(
+            "Absolute path to the worktree the target context is bound to. "
+            "Defaults to the current working directory."
+        ),
+    ),
+    graph_name: str = typer.Option(
+        None,
+        "--graph-name",
+        help=(
+            "FalkorDB graph identifier the target will own. Defaults to '<target>-graph'. "
+            "Must not already exist in the FalkorDB instance — GRAPH.COPY refuses to overwrite."
+        ),
+    ),
+    no_path_rewrite: bool = typer.Option(
+        False,
+        "--no-path-rewrite",
+        help=(
+            "Skip rewriting absolute paths from source.repo_path to target.repo_path. "
+            "Use only when paths happen to match or you'll layer cgc index on top to overlay them."
+        ),
+    ),
+):
+    """Fork a context: server-side clone its graph and create a new context pointing at it.
+
+    Architecturally: this issues GRAPH.COPY in FalkorDB (≈2s for ~300k nodes),
+    then rewrites n.path properties from source.repo_path to target.repo_path
+    (≈seconds), then registers the target context with created_via_fork=True
+    so a later 'cgc context delete' auto-purges the cloned graph.
+
+    The target context's graph_name defaults to '<target>-graph'. Pass --graph-name
+    to override.
+
+    Requires a FalkorDB backend (local or remote). For other backends, fork is
+    not yet supported — re-index from scratch instead.
+    """
+    from pathlib import Path
+    from codegraphcontext.core import get_database_manager
+    from codegraphcontext.core.graph_fork import (
+        GraphForkError,
+        fork_graph,
+        rewrite_paths_in_graph,
+    )
+
+    cfg = config_manager.load_context_config()
+
+    # --- 1. Validate source ---
+    if source not in cfg.contexts:
+        console.print(f"[bold red]Error:[/bold red] source context '{source}' does not exist.")
+        raise typer.Exit(code=1)
+    source_ctx = cfg.contexts[source]
+    if not source_ctx.graph_name:
+        console.print(
+            f"[bold red]Error:[/bold red] source context '{source}' has no graph_name set. "
+            "Fork requires the source to own a dedicated FalkorDB graph.\n"
+            f"Hint: recreate it with `cgc context create {source} --graph-name <name> --repo-path <path>` "
+            "and re-index, or set the graph_name manually."
+        )
+        raise typer.Exit(code=1)
+
+    # --- 2. Validate target ---
+    if target in cfg.contexts:
+        console.print(f"[bold red]Error:[/bold red] target context '{target}' already exists.")
+        raise typer.Exit(code=1)
+
+    # --- 3. Resolve target metadata defaults ---
+    target_graph_name = graph_name or f"{target}-graph"
+    target_repo_path = repo_path or str(Path.cwd().resolve())
+    target_database = source_ctx.database  # inherit from source
+
+    # --- 4. Run the GRAPH.COPY + path rewrite via the source context's driver ---
+    # We need a driver pointing at the FalkorDB instance. The source context's
+    # graph_name is what we'll clone from. We don't have to "be" in the source
+    # context — we just need any FalkorDB driver to issue redis commands.
+    if not source_ctx.database.startswith("falkordb"):
+        console.print(
+            f"[bold red]Error:[/bold red] context fork currently only supports FalkorDB backends. "
+            f"Source context uses {source_ctx.database!r}."
+        )
+        raise typer.Exit(code=1)
+
+    _load_credentials()
+    # Reset FalkorDB singletons so we get a fresh driver bound to no specific graph
+    # (we issue redis commands directly, the graph_name binding doesn't matter here).
+    try:
+        from codegraphcontext.core.database_falkordb_remote import FalkorDBRemoteManager
+        FalkorDBRemoteManager._instance = None
+    except ImportError:
+        pass
+    try:
+        from codegraphcontext.core.database_falkordb import FalkorDBManager
+        FalkorDBManager._instance = None
+    except ImportError:
+        pass
+
+    db_manager = get_database_manager(graph_name=source_ctx.graph_name)
+
+    console.print(
+        f"[bold green]Forking[/bold green] {source!r} → {target!r}\n"
+        f"  Source graph: {source_ctx.graph_name}\n"
+        f"  Target graph: {target_graph_name}\n"
+        f"  Target worktree: {target_repo_path}"
+    )
+
+    # Step 1: server-side GRAPH.COPY
+    try:
+        fork_graph(db_manager, source_ctx.graph_name, target_graph_name)
+        console.print(f"[green]✓[/green] GRAPH.COPY complete: {source_ctx.graph_name} → {target_graph_name}")
+    except GraphForkError as exc:
+        console.print(f"[bold red]Fork failed:[/bold red] {exc}")
+        raise typer.Exit(code=1)
+
+    # Step 2: path rewrite (unless suppressed or no source path is known)
+    if not no_path_rewrite and source_ctx.repo_path and source_ctx.repo_path != target_repo_path:
+        try:
+            updated = rewrite_paths_in_graph(
+                db_manager,
+                target_graph_name,
+                old_prefix=source_ctx.repo_path,
+                new_prefix=target_repo_path,
+            )
+            console.print(f"[green]✓[/green] Path rewrite complete: updated {updated} nodes")
+        except GraphForkError as exc:
+            console.print(f"[bold yellow]Warning:[/bold yellow] path rewrite failed: {exc}")
+            console.print("[dim]The graph was copied but paths still point at the source worktree.[/dim]")
+
+    # Step 3: register the target context
+    config_manager.create_context(
+        target,
+        database=target_database,
+        graph_name=target_graph_name,
+        repo_path=target_repo_path,
+        created_via_fork=True,
+    )
+
+    console.print(
+        f"\n[bold green]Done.[/bold green] Query the new context with "
+        f"`cgc <command> --context {target}` or by setting it as the default."
+    )
+    console.print(
+        "[dim]To layer WIP changes that aren't in the source: "
+        f"`cgc index {target_repo_path} --context {target}`[/dim]"
+    )
+
 @context_app.command("mode")
 def context_mode(
     mode: str = typer.Argument(..., help="Mode to switch to (global, per-repo, named)"),
