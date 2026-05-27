@@ -677,6 +677,7 @@ class MCPServer:
 
         loop = asyncio.get_event_loop()
         while True:
+            request = None  # reset per-iteration to avoid stale id from prior loop
             try:
                 # Read a request from the standard input.
                 line = await loop.run_in_executor(None, sys.stdin.readline)
@@ -693,7 +694,7 @@ class MCPServer:
             except Exception as e:
                 error_logger(f"Error processing request: {e}\n{traceback.format_exc()}")
                 request_id = "unknown"
-                if 'request' in locals() and isinstance(request, dict):
+                if isinstance(request, dict):
                     request_id = request.get('id', "unknown")
 
                 error_response = {
