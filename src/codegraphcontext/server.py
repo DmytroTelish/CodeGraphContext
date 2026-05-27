@@ -143,6 +143,13 @@ class MCPServer:
         self._context_note_pending = False
         self.disabled_tools: Set[str] = set()
 
+        # Optional serialization of tool calls. Set CGC_SERIALIZE_TOOL_CALLS=1 to enable.
+        # The daemon uses this to serialize concurrent Kuzu writes coming from multiple
+        # stdio-proxy clients. The lock is created here but only awaited inside
+        # handle_tool_call, so it's bound to the active event loop at request time.
+        self._serialize_tool_calls = os.environ.get("CGC_SERIALIZE_TOOL_CALLS", "").lower() in {"1", "true", "yes"}
+        self._tool_call_lock: asyncio.Lock | None = asyncio.Lock() if self._serialize_tool_calls else None
+
         try:
             ctx = resolve_context(cwd=self.cwd)
             self.resolved_context = ctx
