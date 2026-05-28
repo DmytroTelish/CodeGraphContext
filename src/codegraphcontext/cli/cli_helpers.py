@@ -121,9 +121,19 @@ def _initialize_services(
         ):
             os.environ["DEFAULT_DATABASE"] = ctx.database
         
-        # Pass the exact DB path resolved from the context, or the runtime override
+        # Pass the exact DB path resolved from the context, or the runtime override.
+        # Also thread the context's graph_name so FalkorDB drivers bind to the
+        # correct named graph (otherwise commands like `cgc query --context foo`
+        # silently fall back to FALKORDB_GRAPH_NAME env or the 'codegraph' default,
+        # which means `cgc context fork`'s target graph is unreachable through
+        # any normal CLI command).
         runtime_path = os.getenv("CGC_RUNTIME_DB_PATH")
-        db_manager = get_database_manager(db_path=runtime_path or ctx.db_path)
+        # getattr handles duck-typed contexts that pre-date the graph_name field.
+        ctx_graph_name = getattr(ctx, "graph_name", None) or None
+        db_manager = get_database_manager(
+            db_path=runtime_path or ctx.db_path,
+            graph_name=ctx_graph_name,
+        )
     except ValueError as e:
         console.print(f"[bold red]Database Configuration Error:[/bold red] {e}")
         _fail_services_init()
