@@ -3,12 +3,23 @@ import asyncio
 
 import pytest
 
+from codegraphcontext.cli import config_manager
 from codegraphcontext.server import MCPServer
+
+
+def _isolate_from_global_context_config(tmp_path, monkeypatch):
+    """Isolate from this machine's real ~/.codegraphcontext/config.yaml: a
+    "named" mode with a default_context pointing at a remote-only backend
+    would otherwise override CGC_RUNTIME_DB_TYPE and fail on a missing
+    FALKORDB_HOST."""
+    monkeypatch.setattr(config_manager, "CONTEXT_CONFIG_FILE", tmp_path / "config.yaml")
+    monkeypatch.setattr(config_manager, "_LEGACY_CONTEXT_CONFIG_FILE", tmp_path / "cgc_config.yaml")
 
 
 @pytest.fixture
 def isolated_server(tmp_path, monkeypatch):
     """Construct MCPServer with a throwaway Kuzu DB to avoid touching user data."""
+    _isolate_from_global_context_config(tmp_path, monkeypatch)
     monkeypatch.setenv("CGC_RUNTIME_DB_TYPE", "kuzudb")
     monkeypatch.setenv("KUZU_DB_PATH", str(tmp_path / "graph.kuzu"))
     loop = asyncio.new_event_loop()
@@ -24,6 +35,7 @@ def test_serialize_tool_calls_defaults_to_false(isolated_server):
 
 
 def test_serialize_tool_calls_can_be_enabled(tmp_path, monkeypatch):
+    _isolate_from_global_context_config(tmp_path, monkeypatch)
     monkeypatch.setenv("CGC_RUNTIME_DB_TYPE", "kuzudb")
     monkeypatch.setenv("KUZU_DB_PATH", str(tmp_path / "graph.kuzu"))
     monkeypatch.setenv("CGC_SERIALIZE_TOOL_CALLS", "1")
@@ -39,6 +51,7 @@ def test_serialize_tool_calls_can_be_enabled(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_handle_tool_call_acquires_lock_when_enabled(tmp_path, monkeypatch):
     """When _tool_call_lock is set, handle_tool_call must acquire it before dispatch."""
+    _isolate_from_global_context_config(tmp_path, monkeypatch)
     monkeypatch.setenv("CGC_RUNTIME_DB_TYPE", "kuzudb")
     monkeypatch.setenv("KUZU_DB_PATH", str(tmp_path / "graph.kuzu"))
     monkeypatch.setenv("CGC_SERIALIZE_TOOL_CALLS", "1")
@@ -64,6 +77,7 @@ async def test_handle_tool_call_acquires_lock_when_enabled(tmp_path, monkeypatch
 @pytest.mark.asyncio
 async def test_handle_tool_call_truly_serializes_concurrent_calls(tmp_path, monkeypatch):
     """Two concurrent handle_tool_call invocations must execute serially."""
+    _isolate_from_global_context_config(tmp_path, monkeypatch)
     monkeypatch.setenv("CGC_RUNTIME_DB_TYPE", "kuzudb")
     monkeypatch.setenv("KUZU_DB_PATH", str(tmp_path / "graph.kuzu"))
     monkeypatch.setenv("CGC_SERIALIZE_TOOL_CALLS", "1")

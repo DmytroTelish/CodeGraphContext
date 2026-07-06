@@ -3,11 +3,18 @@ import asyncio
 
 import pytest
 
+from codegraphcontext.cli import config_manager
 from codegraphcontext.server import MCPServer
 
 
 @pytest.fixture
 def server(tmp_path, monkeypatch):
+    # Isolate from this machine's real ~/.codegraphcontext/config.yaml: a
+    # "named" mode with a default_context pointing at a remote-only backend
+    # would otherwise override CGC_RUNTIME_DB_TYPE below and fail on a
+    # missing FALKORDB_HOST.
+    monkeypatch.setattr(config_manager, "CONTEXT_CONFIG_FILE", tmp_path / "config.yaml")
+    monkeypatch.setattr(config_manager, "_LEGACY_CONTEXT_CONFIG_FILE", tmp_path / "cgc_config.yaml")
     monkeypatch.setenv("CGC_RUNTIME_DB_TYPE", "kuzudb")
     monkeypatch.setenv("KUZU_DB_PATH", str(tmp_path / "graph.kuzu"))
     loop = asyncio.new_event_loop()

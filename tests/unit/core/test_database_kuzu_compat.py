@@ -203,10 +203,12 @@ def test_unwind_uid_collision_disambiguator_is_content_derived():
     """When multiple rows collide, the disambiguating suffix must come from row content (not batch index)."""
     conn = _FakeConn()
     session = KuzuSessionWrapper(conn)
-    # Three rows that all produce identical raw composite keys.
-    row_x = {"name": "$n", "line_number": None, "source": "x"}
-    row_y = {"name": "$n", "line_number": None, "source": "y"}
-    row_z = {"name": "$n", "line_number": None, "source": "z"}
+    # Three rows that all produce identical raw composite keys. line_number is a
+    # real (non-missing) shared value so the fallback-hash path doesn't kick in
+    # and mask the collision before the disambiguator ever runs.
+    row_x = {"name": "$n", "line_number": 1, "source": "x"}
+    row_y = {"name": "$n", "line_number": 1, "source": "y"}
+    row_z = {"name": "$n", "line_number": 1, "source": "z"}
     session.run(
         """
         UNWIND $batch AS row
@@ -219,7 +221,7 @@ def test_unwind_uid_collision_disambiguator_is_content_derived():
     _translated, params = conn.queries[0]
     # row_x is first → no suffix (no prior collision). row_y and row_z get suffixes.
     uids_by_source = {r["source"]: r["uid"] for r in params["batch"]}
-    assert uids_by_source["x"] == "$n/repo/a.py-1", uids_by_source
+    assert uids_by_source["x"] == "$n/repo/a.py1", uids_by_source
     # row_y and row_z suffixes must contain a hex digest (8 hex chars), not "#0"/"#1"/"#2".
     import re
     hex_suffix = re.compile(r"#[0-9a-f]{8}$")
@@ -243,9 +245,11 @@ def test_unwind_uid_seen_set_resets_per_merge_statement():
     """Two MERGE statements in one query must each get their own collision tracker."""
     conn = _FakeConn()
     session = KuzuSessionWrapper(conn)
-    # Two MERGE statements, each with its own pair of colliding rows.
-    row_x = {"name": "$n", "line_number": None, "source": "x"}
-    row_y = {"name": "$n", "line_number": None, "source": "y"}
+    # Two MERGE statements, each with its own pair of colliding rows. line_number
+    # is a real (non-missing) shared value so the fallback-hash path doesn't mask
+    # the collision before the disambiguator ever runs.
+    row_x = {"name": "$n", "line_number": 1, "source": "x"}
+    row_y = {"name": "$n", "line_number": 1, "source": "y"}
     session.run(
         """
         UNWIND $batch AS row
@@ -263,7 +267,7 @@ def test_unwind_uid_seen_set_resets_per_merge_statement():
     # uids from params, but we CAN assert the final uid on each row is the one the
     # SECOND MERGE assigned (which is itself consistent — row_x raw, row_y suffixed).
     uids = {r["source"]: r["uid"] for r in params["batch"]}
-    assert uids["x"] == "$n/repo/a.py-1", uids
+    assert uids["x"] == "$n/repo/a.py1", uids
     # row_y must have a hex suffix because it collided with row_x within the SECOND MERGE
     # (and within the first too — both MERGEs see the same collision pattern). The
     # critical invariant is the second MERGE ran its OWN seen_uids; if it had inherited
@@ -276,9 +280,11 @@ def test_unwind_uid_mixed_batch_only_suffixes_colliders():
     """Non-colliding rows in a mixed batch must keep their raw UID; only colliders get suffixed."""
     conn = _FakeConn()
     session = KuzuSessionWrapper(conn)
-    # Three rows: two collide on (name="$n", line_number=None), one is unique.
-    row_collider_1 = {"name": "$n", "line_number": None, "source": "c1"}
-    row_collider_2 = {"name": "$n", "line_number": None, "source": "c2"}
+    # Three rows: two collide on (name="$n", line_number=1), one is unique. line_number
+    # is a real (non-missing) shared value for the colliders so the fallback-hash path
+    # doesn't mask the collision before the disambiguator ever runs.
+    row_collider_1 = {"name": "$n", "line_number": 1, "source": "c1"}
+    row_collider_2 = {"name": "$n", "line_number": 1, "source": "c2"}
     row_unique     = {"name": "foo", "line_number": 42,   "source": "u"}
     session.run(
         """
@@ -292,9 +298,9 @@ def test_unwind_uid_mixed_batch_only_suffixes_colliders():
     _translated, params = conn.queries[0]
     uids = {r["source"]: r["uid"] for r in params["batch"]}
     # collider_1 is the first occurrence of its raw UID → no suffix.
-    assert uids["c1"] == "$n/repo/a.py-1", uids
+    assert uids["c1"] == "$n/repo/a.py1", uids
     # unique row has a different raw UID → no collision → no suffix.
     assert uids["u"] == "foo/repo/a.py42", uids
     # collider_2 hits a collision with collider_1 → gets a hex suffix.
     import re
-    assert re.search(r"^\$n/repo/a\.py-1#[0-9a-f]{8}$", uids["c2"]), uids
+    assert re.search(r"^\$n/repo/a\.py1#[0-9a-f]{8}$", uids["c2"]), uids
