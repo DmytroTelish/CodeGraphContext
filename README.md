@@ -69,6 +69,36 @@ A powerful **MCP server** and **CLI toolkit** that indexes local code into a gra
 
 ---
 
+## 🍴 About this fork
+
+This is [DmytroTelish](https://github.com/DmytroTelish)'s fork of upstream
+[CodeGraphContext](https://github.com/CodeGraphContext/CodeGraphContext). The
+`upgrade/0.4.x-from-fork` branch is rebased onto current upstream `main` and
+adds:
+
+- **`cgc context fork`** (`core/graph_fork.py`) — server-side `GRAPH.COPY` +
+  path rewrite to clone an existing named context's graph into a new one in
+  ~2s instead of a full re-index. Built for per-git-worktree isolation: keep
+  one canonical context continuously indexed, then cheaply fork it per
+  feature-branch worktree. Includes the `_initialize_services` graph_name
+  threading fix this depends on.
+- **An MCP daemon mode** — a Unix-socket daemon (`cgc mcp daemon`), a
+  `--daemon-socket` proxy mode for `mcp start`, and an optional tool-call
+  serialization lock in `MCPServer`, so multiple stdio MCP clients can share
+  one long-lived server process instead of each spawning their own.
+- **A UID-disambiguation fix** for `UNWIND`-batch composite-key collisions in
+  the Kuzu/embedded-graph writer (`database_embedded_kuzu.py`) — distinct
+  rows that produce identical composite primary keys (e.g. via a normalized
+  missing `line_number`) no longer collapse onto the same node under `MERGE`.
+
+Full patch history: `git log upstream/main..upgrade/0.4.x-from-fork` (add
+`upstream` as a remote pointing at
+[`Shashankss1205/CodeGraphContext`](https://github.com/Shashankss1205/CodeGraphContext)
+— the repo this branch was actually rebased against — if it isn't already
+configured: `git remote add upstream https://github.com/Shashankss1205/CodeGraphContext.git`).
+
+---
+
 ## 📍 Quick Navigation
 * [🚀 Quick Start](#-installation--quick-start) 
 * [📋 Prerequisites](#-prerequisites)
