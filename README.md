@@ -1,590 +1,155 @@
-# 🏗️ CodeGraphContext (CGC)
-
-**Turn code repositories into a queryable graph for AI agents.**
-
-🌐 **Languages:**
-- 🇬🇧 [English](README.md)
-- 🇨🇳 [中文](docs/translations/README.zh-CN.md)
-- 🇰🇷 [한국어](docs/translations/README.kor.md)
-- 🇺🇦 [Українська](docs/translations/README.uk.md)
-- 🇷🇺 [Русский](docs/translations/README.ru-RU.md)
-- 🇯🇵 [日本語](docs/translations/README.ja.md)
-- 🇪🇸 Español (Soon)
-
-🌍 **Help translate CodeGraphContext to your language by raising an issue & PR on [GitHub Issues](https://github.com/Shashankss1205/CodeGraphContext/issues)!**
-
-<p align="center">
-  <br>
-  <b>Bridge the gap between deep code graphs and AI context.</b>
-  <br><br>
-  <a href="https://pypi.org/project/codegraphcontext/">
-    <img src="https://img.shields.io/pypi/v/codegraphcontext?style=flat-square&logo=pypi" alt="PyPI Version">
-  </a>
-  <a href="https://pypi.org/project/codegraphcontext/">
-    <img src="https://img.shields.io/pypi/dm/codegraphcontext?style=flat-square" alt="PyPI Downloads">
-  </a>
-  <a href="LICENSE">
-    <img src="https://img.shields.io/github/license/CodeGraphContext/CodeGraphContext?style=flat-square" alt="License">
-  </a>
-  <img src="https://img.shields.io/badge/MCP-Compatible-green?style=flat-square" alt="MCP Compatible">
-  <a href="https://discord.gg/VCwUdCnn">
-    <img src="https://img.shields.io/discord/1421769154507309150?label=Discord&logo=discord&logoColor=white&style=flat-square">
-  </a>
-  <br><br>
-  <a href="https://github.com/CodeGraphContext/CodeGraphContext/stargazers">
-    <img src="https://img.shields.io/github/stars/CodeGraphContext/CodeGraphContext?style=flat-square&logo=github" alt="Stars">
-  </a>
-  <a href="https://github.com/CodeGraphContext/CodeGraphContext/network/members">
-    <img src="https://img.shields.io/github/forks/CodeGraphContext/CodeGraphContext?style=flat-square&logo=github" alt="Forks">
-  </a>
-  <a href="https://github.com/CodeGraphContext/CodeGraphContext/issues">
-    <img src="https://img.shields.io/github/issues-raw/CodeGraphContext/CodeGraphContext?style=flat-square&logo=github" alt="Issues">
-  </a>
-  <a href="https://github.com/CodeGraphContext/CodeGraphContext/pulls">
-    <img src="https://img.shields.io/github/issues-pr/CodeGraphContext/CodeGraphContext?style=flat-square&logo=github" alt="PRs">
-  </a>
-  <a href="https://github.com/CodeGraphContext/CodeGraphContext/graphs/contributors">
-    <img src="https://img.shields.io/github/contributors/CodeGraphContext/CodeGraphContext?style=flat-square&logo=github" alt="Contributors">
-  </a>
-<br><br>
-  <a href="https://github.com/CodeGraphContext/CodeGraphContext/actions/workflows/test.yml">
-    <img src="https://github.com/CodeGraphContext/CodeGraphContext/actions/workflows/test.yml/badge.svg" alt="Tests">
-  </a>
-  <a href="https://github.com/CodeGraphContext/CodeGraphContext/actions/workflows/e2e-tests.yml">
-    <img src="https://github.com/CodeGraphContext/CodeGraphContext/actions/workflows/e2e-tests.yml/badge.svg" alt="E2E Tests">
-  </a>
-  <a href="http://codegraphcontext.vercel.app/">
-    <img src="https://img.shields.io/badge/website-up-brightgreen?style=flat-square" alt="Website">
-  </a>
-  <a href="https://codegraphcontext.vercel.app/">
-    <img src="https://img.shields.io/badge/docs-GitHub%20Pages-blue?style=flat-square" alt="Docs">
-  </a>
-  <a href="https://youtu.be/KYYSdxhg1xU">
-    <img src="https://img.shields.io/badge/YouTube-Watch%20Demo-red?style=flat-square&logo=youtube" alt="YouTube Demo">
-  </a>
-</p>
-
-
-A powerful **MCP server** and **CLI toolkit** that indexes local code into a graph database to provide context to AI assistants and developers. Use it as a standalone CLI for comprehensive code analysis or connect it to your favorite AI IDE via MCP for AI-powered code understanding.
-
----
-
-## 🍴 About this fork
+# CodeGraphContext (fork)
 
 This is [DmytroTelish](https://github.com/DmytroTelish)'s fork of upstream
-[CodeGraphContext](https://github.com/CodeGraphContext/CodeGraphContext). The
-`upgrade/0.4.x-from-fork` branch is rebased onto current upstream `main` and
-adds:
+[CodeGraphContext](https://github.com/CodeGraphContext/CodeGraphContext) — an
+MCP server and CLI toolkit that indexes local code into a graph database to
+give AI assistants and developers structured, queryable context.
 
-- **`cgc context fork`** (`core/graph_fork.py`) — server-side `GRAPH.COPY` +
-  path rewrite to clone an existing named context's graph into a new one in
-  ~2s instead of a full re-index. Built for per-git-worktree isolation: keep
-  one canonical context continuously indexed, then cheaply fork it per
-  feature-branch worktree. Includes the `_initialize_services` graph_name
-  threading fix this depends on.
-- **An MCP daemon mode** — a Unix-socket daemon (`cgc mcp daemon`), a
-  `--daemon-socket` proxy mode for `mcp start`, and an optional tool-call
-  serialization lock in `MCPServer`, so multiple stdio MCP clients can share
-  one long-lived server process instead of each spawning their own.
-- **A UID-disambiguation fix** for `UNWIND`-batch composite-key collisions in
-  the Kuzu/embedded-graph writer (`database_embedded_kuzu.py`) — distinct
-  rows that produce identical composite primary keys (e.g. via a normalized
-  missing `line_number`) no longer collapse onto the same node under `MERGE`.
+For general usage, installation, supported languages, and the full CLI
+reference, see [upstream's README](https://github.com/CodeGraphContext/CodeGraphContext#readme)
+and [docs](https://codegraphcontext.vercel.app/) — this fork doesn't change
+any of that. This document covers only what's different here.
 
-Full patch history: `git log upstream/main..upgrade/0.4.x-from-fork` (add
-`upstream` as a remote pointing at
-[`Shashankss1205/CodeGraphContext`](https://github.com/Shashankss1205/CodeGraphContext)
-— the repo this branch was actually rebased against — if it isn't already
-configured: `git remote add upstream https://github.com/Shashankss1205/CodeGraphContext.git`).
-
----
-
-## 📍 Quick Navigation
-* [🚀 Quick Start](#-installation--quick-start) 
-* [📋 Prerequisites](#-prerequisites)
-* [🏃 How to Run the Project Locally](#-how-to-run-the-project-locally)
-* [🌐 Supported Programming Languages](#supported-programming-languages) 
-* [🛠️ CLI Toolkit](#for-cli-toolkit-mode) 
-* [🤖 MCP Server](#-for-mcp-server-mode) 
-* [🗄️ Database Options](#database-options)
-* [🔬 SCIP indexing (optional)](#scip-indexing-optional)
-
----
-
-## ✨ Experience CGC
-
-
-### 👨🏻‍💻 Installation and CLI
-> Install in seconds with pip and unlock a powerful CLI for code graph analysis.
-![Install and unlock the CLI instantly](https://github.com/CodeGraphContext/CodeGraphContext/blob/main/images/install&cli.gif)
-
-
-### 🛠️ Indexing in Seconds
-> The CLI intelligently parses your tree-sitter nodes to build the graph.
-![Indexing using an MCP client](https://github.com/CodeGraphContext/CodeGraphContext/blob/main/images/Indexing.gif)
-
-### 🤖 Powering your AI Assistant
-> Use natural language to query complex call-chains via MCP.
-![Using the MCP server](https://github.com/CodeGraphContext/CodeGraphContext/blob/main/images/Usecase.gif)
-
----
-
-## Project Details
-- **Version:** 0.5.1
-- **Authors:** Shashank Shekhar Singh <shashankshekharsingh1205@gmail.com>
-- **License:** MIT License (See [LICENSE](LICENSE) for details)
-- **Website:** [CodeGraphContext](http://codegraphcontext.vercel.app/)
-
----
-
-## 👨‍💻 Maintainer
-**CodeGraphContext** is created and actively maintained by:
-
-**Shashank Shekhar Singh**  
-- 📧 Email: [shashankshekharsingh1205@gmail.com](mailto:shashankshekharsingh1205@gmail.com)
-- 🐙 GitHub: [@Shashankss1205](https://github.com/Shashankss1205)
-- 🔗 LinkedIn: [Shashank Shekhar Singh](https://www.linkedin.com/in/shashank-shekhar-singh-a67282228/)
-- 🌐 Website: [codegraphcontext.vercel.app](https://codegraphcontext.vercel.app/)
-
-*Contributions and feedback are always welcome! Feel free to reach out for questions, suggestions, or collaboration opportunities.*
-
----
-
-## Star History
-[![Star History Chart](https://api.star-history.com/svg?repos=CodeGraphContext/CodeGraphContext&type=Date)](https://www.star-history.com/#CodeGraphContext/CodeGraphContext&Date)
-
----
-
-## Features
--   **Code Indexing:** Analyzes code and builds a knowledge graph of its components.
--   **Relationship Analysis:** Query for callers, callees, class hierarchies, call chains and more.
--   **Pre-indexed Bundles:** Load famous repositories instantly with `.cgc` bundles - no indexing required! ([Learn more](docs/docs/guides/bundles.md))
--   **Live File Watching:** Watch directories for changes and automatically update the graph in real-time (`cgc watch`).
--   **Interactive Setup:** A user-friendly command-line wizard for easy setup.
--   **Dual Mode:** Works as a standalone **CLI toolkit** for developers and as an **MCP server** for AI agents.
--   **Multi-Language Support:** Full support for 23 programming languages.
--   **Flexible Database Backend:** FalkorDB Lite (Default), KuzuDB, LadybugDB, FalkorDB Remote, Nornic DB, or Neo4j (all platforms via Docker/native).
-
-
----
-
-## Supported Programming Languages
-
-CodeGraphContext provides comprehensive parsing and analysis for the following languages:
-
-| | Language | | Language | | Language |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| 🐍 | **Python** | 📜 | **JavaScript** | 🔷 | **TypeScript** |
-| ☕ | **Java** | 🔵 | **C** | ➕ | **C++** |
-| #️⃣ | **C#** | 🐹 | **Go** | 🦀 | **Rust** |
-| 💎 | **Ruby** | 🐘 | **PHP** | 🍎 | **Swift** |
-| 🎨 | **Kotlin** | 🎯 | **Dart** | 🐪 | **Perl** |
-| 🌙 | **Lua** | 🚀 | **Scala** | λ | **Haskell** |
-| 💧 | **Elixir** | 📜 | **Emacs Lisp (elisp)** | 🌐 | **HTML** |
-| 🎨 | **CSS** | ⚛️ | **TSX** | | |
-
-Each language parser extracts functions, classes, methods, parameters, inheritance relationships, function calls, and imports to build a comprehensive code graph.
-
----
-
-## Database Options
-
-CodeGraphContext supports multiple graph database backends to suit your environment:
-
-| Feature | KuzuDB | LadybugDB | FalkorDB Lite | Neo4j / Nornic DB |
-| :--- | :--- | :--- | :--- | :--- |
-| **Typical default** | Cross-platform fallback when FalkorDB Lite is unavailable | Optional embedded backend | **Default on Unix** (Python 3.12+, when `falkordblite` is installed) | When explicitly configured via `cgc config db` |
-| **Setup** | Zero-config / Embedded | Zero-config / Embedded | Zero-config / In-process | Docker / External |
-| **Platform** | **All (Windows Native, macOS, Linux)** | **All (Windows Native, macOS, Linux)** | Unix-only (Linux/macOS/WSL) | All Platforms |
-| **Use Case** | Desktop, IDE, Local development | Custom research projects | Specialized Unix development | Enterprise, Massive graphs |
-| **Requirement**| `pip install kuzu` | `pip install ladybug` | `pip install falkordblite` | Neo4j Server / Docker / Nornic Cloud |
-| **Speed** | ⚡ Extremely Fast | ⚡ Fast | 🚀 Scalable |
-| **Persistence**| Yes (to disk) | Yes (to disk) | Yes (to disk) |
-
----
-
-## SCIP indexing (optional)
-
-When `SCIP_INDEXER=true` in your CGC config (`~/.codegraphcontext/.env`), some languages use external **SCIP** indexers for more accurate calls and inheritance than Tree-sitter heuristics alone.
-
-**C and C++** use **scip-clang**, which requires a **`compile_commands.json`** file (a [JSON compilation database](https://clang.llvm.org/docs/JSONCompilationDatabase.html)): one entry per translation unit with the real compiler command (include paths, `-D` defines, `-std`, etc.). Without it, scip-clang cannot run; CGC logs a warning and **falls back to Tree-sitter** for that repo. Typical ways to produce the file: **CMake** with `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`, or wrap your real build with **[Bear](https://github.com/rizsotto/Bear)** (e.g. `bear -- make`). CGC also looks under `build/` and `cmake-build-*/` for that filename.
-
-**C#** uses **scip-dotnet** (Roslyn); you need a normal **`.csproj` / `.sln`** and a successful restore—no `compile_commands.json`.
-
-SCIP is **independent of which graph database** you use (Kuzu, Neo4j, etc.); the same flag applies to all backends.
-
----
-
-## Used By
-
-CodeGraphContext is already being explored by developers and projects for:
-
-- **Static code analysis in AI assistants**
-- **Graph-based visualization of projects**
-- **Dead code and complexity detection**
-
-_If you’re using CodeGraphContext in your project, feel free to open a PR and add it here! 🚀_
-
----
-
-## Dependencies
-
-- `neo4j>=5.15.0`
-- `watchdog>=3.0.0`
-- `stdlibs>=2023.11.18`
-- `typer>=0.9.0`
-- `rich>=13.7.0`
-- `inquirerpy>=0.3.4`
-- `python-dotenv>=1.0.0`
-- `tree-sitter>=0.21.0` (not installed on Python 3.13)
-- `tree-sitter-language-pack>=0.6.0` (not installed on Python 3.13)
-- `pyyaml`
-- `pathspec>=0.12.1`
-- `falkordb>=1.0,<1.6`
-- `falkordblite>=0.7,<0.10` (Unix only, Python 3.12+)
-- `kuzu` (KuzuDB engine)
-- `fastapi>=0.100.0`
-- `uvicorn>=0.22.0`
-- `requests>=2.28.0`
-- `protobuf>=3.20,<3.21`
-
-**Note:** Python 3.10-3.14 is supported.
-
----
-
-### 🚀 Installation & Quick Start
-
-1.  **Install the toolkit:**
-    ```bash
-    pip install codegraphcontext
-    ```
-
-2.  **Troubleshooting (Command not found):**
-    If the `codegraphcontext` command is not found, run this one-line fix:
-    ```bash
-    curl -sSL https://raw.githubusercontent.com/CodeGraphContext/CodeGraphContext/main/scripts/post_install_fix.sh | bash
-    ```
-
-3.  **Database Setup (Automatic):**
-    CodeGraphContext uses an embedded graph database by default.
-    - **FalkorDB Lite:** Default backend.
-    - **KuzuDB:** Cross-platform embedded backend.
-    - **Neo4j:** Run `codegraphcontext neo4j setup` to use an external server.
-
----
-
-## 📋 Prerequisites
-
-Before installing CodeGraphContext, ensure you have:
-
-* Python 3.10 or later
-* pip package manager
-* Git (optional, for cloning repositories)
-
-Verify your Python installation:
+The `upgrade/0.4.x-from-fork` branch is rebased onto upstream `main`
+(currently `v0.5.1` + one commit). Full patch history:
 
 ```bash
-python --version
+git remote add upstream https://github.com/Shashankss1205/CodeGraphContext.git
+git log upstream/main..upgrade/0.4.x-from-fork
 ```
 
 ---
 
-## 🚀 Step-by-Step Setup Guide
+## Features added
 
-### Step 1: Install CodeGraphContext
-
-```bash
-pip install codegraphcontext
-```
-
-This command installs CodeGraphContext and all required dependencies.
-
-### Step 2: Verify Installation
+### `cgc context fork` — clone a named context's graph in ~2 seconds
 
 ```bash
-codegraphcontext --help
+cgc context fork <source> <target> [--repo-path PATH] [--graph-name NAME] [--no-path-rewrite]
 ```
 
-If the command displays the available CLI commands, the installation was successful.
+Server-side clone of a named context's FalkorDB graph via `GRAPH.COPY`,
+with node paths rewritten from the source's `repo_path` to the target's,
+in one command. Built to replace a ~5-10 minute cold-start `cgc index` for
+every new feature-branch worktree: keep one canonical context (e.g.
+`main`/`stage`) continuously indexed, then fork it per worktree instead of
+re-indexing from scratch. Benchmarked at ~2s for ~300k nodes / ~44k files.
 
-### Step 3: Database Setup
+What it does:
+1. Validates the source context exists and owns a `graph_name` (no
+   `graph_name` means no FalkorDB graph to clone).
+2. Validates the target name doesn't already exist.
+3. Resolves the target's `graph_name` (default `<target>-graph`) and
+   `repo_path` (default: current directory).
+4. Issues `GRAPH.COPY <source>-graph <target>-graph` at the Redis level.
+5. Rewrites `n.path` properties in the cloned graph from the source's
+   `repo_path` to the target's via a single Cypher `UPDATE` (skippable with
+   `--no-path-rewrite`, or a no-op when the paths already match).
+6. Registers the target context with `created_via_fork=True`, so a later
+   `cgc context delete` auto-purges the cloned graph instead of leaving an
+   orphaned ~300k-node graph behind (override with `--keep-graph`).
 
-CodeGraphContext automatically uses an embedded database by default, so no additional configuration is required for most users.
+Currently FalkorDB-only — forking from a context on another backend fails
+with a clear message pointing at re-indexing as the fallback.
+
+New module: `codegraphcontext.core.graph_fork` (`fork_graph`,
+`rewrite_paths_in_graph`, `delete_graph` — thin wrappers around the redis
+connection, all raising `GraphForkError` on failure).
+
+Also added: `--graph-name`/`--repo-path` flags on `cgc context create`, so a
+context can be seeded to own a dedicated FalkorDB graph up front (required
+before it can be forked from).
+
+### MCP daemon mode — one shared server for multiple clients
+
+```bash
+cgc mcp daemon [--socket-path PATH]
+cgc mcp start --daemon-socket PATH   # or env CGC_MCP_DAEMON_SOCKET
+```
+
+A long-lived JSON-RPC daemon serving over a Unix socket, so multiple
+stdio-based MCP clients (Cursor, Claude Code, Codex, ...) can share one
+running `CodeGraphContext` server instead of each spawning its own. When
+`--daemon-socket` is set on `mcp start` (or the env var is), it proxies
+stdio traffic to the shared daemon, auto-starting it if it isn't already
+running; pass `--no-daemon` to opt back into the legacy one-process-per-client
+behavior.
+
+Enabled by extracting `MCPServer.process_jsonrpc_request()` out of the stdio
+read loop so both the daemon and the plain stdio path share one
+implementation — the stdio behavior itself is unchanged.
+
+Also added: an optional tool-call serialization lock
+(`CGC_SERIALIZE_TOOL_CALLS=1`), which the daemon uses to serialize
+concurrent Kuzu writes coming from multiple proxied clients. Disabled by
+default; the plain in-process stdio path is unaffected either way.
 
 ---
 
-## 🏃 How to Run the Project Locally
+## Bug fixes
 
-### Index a Repository
+- **UID collisions on `UNWIND`-batch writes with duplicate composite keys.**
+  When a batch of rows produced identical composite primary-key components
+  (e.g. a missing `line_number` normalized to a placeholder), the UID
+  injector assigned the same `raw_uid` to distinct rows, silently collapsing
+  them into one node on `MERGE`. Fixed by detecting per-`MERGE` collisions
+  and appending a suffix only to colliding rows — derived from a content
+  hash of the row (not batch index, which would make the suffix
+  order-dependent across re-indexes of the same batch). Non-colliding
+  batches are unaffected. (Upstream has since independently added its own
+  fallback for missing PK fields, which narrows but doesn't eliminate this
+  collision class — this fix is still needed on top of that.)
 
-```bash
-codegraphcontext index .
-```
+- **`_initialize_services` dropped `graph_name` when resolving a context.**
+  Every CLI command that resolves a context by name (`cgc query --context
+  foo`, `cgc stats --context foo`, `cgc find ... --context foo`, etc.) was
+  silently binding to the wrong FalkorDB graph — `cgc context fork` would
+  correctly create and populate the new graph, but no follow-up command
+  could read it back, so a forked context appeared empty. Root cause:
+  `_initialize_services` passed `db_path` to `get_database_manager` but not
+  `graph_name`, so the FalkorDB singleton fell back to the
+  `FALKORDB_GRAPH_NAME` env var / `codegraph` default instead of the
+  context's own graph. Verified against a real FalkorDB instance
+  (16k-file / 42k-function repo): before the fix, `cgc query --context
+  <fork>` returned 0 rows for the fork's own graph and leaked rows from the
+  source graph instead; after the fix, node counts on the forked context
+  match the source exactly.
 
-This scans the current project and creates a searchable code graph.
+- **`MCPServer.run()` leaked the previous request's id into unrelated error
+  responses.** The loop's error handler checked `'request' in locals()` to
+  recover a request id for the JSON-RPC error response, but `request` was
+  never reset between iterations — after a successful request followed by a
+  parse failure on the *next* line, the error response echoed the prior
+  request's id instead of reporting `"unknown"`. Fixed by resetting
+  `request = None` at the top of every loop iteration. Pre-existing upstream
+  bug, not introduced by this fork.
 
-### View Indexed Repositories
-
-```bash
-codegraphcontext list
-```
-
-Displays all repositories currently indexed by CodeGraphContext.
-
-### Analyze Code
-
-```bash
-codegraphcontext analyze dead-code
-```
-
-Finds potentially unused code in the indexed repository.
-
----
-
-## ✅ Verify Everything Works
-
-After indexing a repository, run:
-
-```bash
-codegraphcontext list
-```
-
-If the command executes successfully and displays indexed repositories, your setup is complete and CodeGraphContext is ready to use.
-
-### For CLI Toolkit Mode
-
-**Start using immediately with CLI commands:**
-```bash
-# Index your current directory
-codegraphcontext index .
-
-# List all indexed repositories
-codegraphcontext list
-
-# Analyze who calls a function
-codegraphcontext analyze callers my_function
-
-# Find complex code
-codegraphcontext analyze complexity --threshold 10
-
-# Find dead code
-codegraphcontext analyze dead-code
-
-# Watch for live changes (optional)
-codegraphcontext watch .
-
-# See all commands
-codegraphcontext help
-```
-
-  **See the full [CLI Commands Guide](docs/CLI_COMPLETE_REFERENCE.md) for all available commands and usage scenarios.**
-
-### 🎨 Premium Interactive Visualization
-CodeGraphContext can generate stunning, interactive knowledge graphs of your code. Unlike static diagrams, these are premium web-based explorers:
-
-- **Premium Aesthetics**: Dark mode, glassmorphism, and modern typography (Outfit/JetBrains Mono).
-- **Interactive Inspection**: Click any node to open a detailed side panel with symbol information, file paths, and context.
-- **Quick Search**: Live-search through the graph to find specific symbols instantly.
-- **Intelligent Layouts**: Force-directed and hierarchical layouts that make complex relationships readable.
-- **Zero-Dependency Viewing**: Standalone HTML files that work in any modern browser.
-
-```bash
-# Visualize function calls
-codegraphcontext analyze calls my_function --viz
-
-# Explore class hierarchies
-codegraphcontext analyze tree MyClass --viz
-
-# Visualize search results
-codegraphcontext find pattern "Auth" --viz
-```
-
+- **`NameError: debug_log` crashed indexing on any C++ method-linking
+  failure.** The exception handler for C++ method linking in
+  `persistence/writer.py` tried to log via `debug_log`, which the file never
+  imported (only `info_logger`/`warning_logger` were). Since that except
+  branch fires routinely for non-C++ projects, this crashed the entire
+  indexing run instead of just skipping the failed link — breaking the
+  parser-golden integration tests and the e2e DB-parity test in CI.
 
 ---
 
-### 🤖 For MCP Server Mode
+## Installing this fork
 
-**Configure your AI assistant to use CodeGraphContext:**
-1.  **Setup:** Run the MCP setup wizard to configure your IDE/AI assistant:
-    
-    ```bash
-    codegraphcontext mcp setup
-    ```
-    
-    The wizard can automatically detect and configure:
-    *   VS Code
-    *   Cursor
-    *   Windsurf
-    *   Zed
-    *   Claude
-    *   Gemini CLI
-    *   ChatGPT Codex
-    *   Cline
-    *   RooCode
-    *   Amazon Q Developer
-    *   Kiro
-    *   Goose
-    *   OpenCode
-
-    Upon successful configuration, `codegraphcontext mcp setup` will generate and place the necessary configuration files:
-    *   It creates an `mcp.json` file in your current directory for reference.
-    *   It stores your database credentials securely in `~/.codegraphcontext/.env`.
-    *   It updates the settings file of your chosen IDE/CLI (e.g., `.claude.json` or VS Code's `settings.json`).
-
-2.  **Start:** Launch the MCP server:    
-    ```bash
-    codegraphcontext mcp start
-    ```
-
-3.  **Use:** Now interact with your codebase through your AI assistant using natural language! See examples below.
-
----
-
-## Ignoring Files (`.cgcignore`)
-
-You can tell CodeGraphContext to ignore specific files and directories by creating a `.cgcignore` file in the root of your project. This file uses the same syntax as `.gitignore`.
-
-**Example `.cgcignore` file:**
-```
-# Ignore build artifacts
-/build/
-/dist/
-
-# Ignore dependencies
-/node_modules/
-/vendor/
-
-# Ignore logs
-*.log
+```bash
+uv tool install "git+https://github.com/DmytroTelish/CodeGraphContext.git@upgrade/0.4.x-from-fork"
+# or, from a local checkout:
+uv tool install --force /path/to/this/checkout
 ```
 
----
+Verify with `cgc --version` and `cgc context fork --help` / `cgc mcp daemon
+--help`.
 
-## MCP Client Configuration
+## Test coverage
 
-The `codegraphcontext mcp setup` command attempts to automatically configure your IDE/CLI. If you choose not to use the automatic setup, or if your tool is not supported, you can configure it manually.
-
-Add the following server configuration to your client's settings file (e.g., VS Code's `settings.json` or `.claude.json`):
-
-```json
-{
-  "mcpServers": {
-    "CodeGraphContext": {
-      "command": "codegraphcontext",
-      "args": [
-        "mcp",
-        "start"
-      ],
-      "env": {
-        "NEO4J_URI": "YOUR_NEO4J_URI",
-        "NEO4J_USERNAME": "YOUR_NEO4J_USERNAME",
-        "NEO4J_PASSWORD": "YOUR_NEO4J_PASSWORD"
-      },
-      "disabled": false,
-      "alwaysAllow": []
-    }
-  }
-}
-```
-
-#### OpenCode Configuration
-
-For instructions on installing and configuring MCP servers with OpenCode, see the [OpenCode MCP Guide](https://opencode.ai/docs/ko/mcp-servers/#_top).
-
-#### If installed via pipx
-
-If you installed CodeGraphContext using `pipx`, use the following configuration instead:
-```json
-{
-  "mcpServers": {
-    "CodeGraphContext": {
-      "command": "pipx",
-      "args": [
-        "run",
-        "codegraphcontext",
-        "mcp",
-        "start"
-      ],
-      "env": {
-        "NEO4J_URI": "YOUR_NEO4J_URI",
-        "NEO4J_USERNAME": "YOUR_NEO4J_USERNAME",
-        "NEO4J_PASSWORD": "YOUR_NEO4J_PASSWORD"
-      },
-      "disabled": false,
-      "alwaysAllow": []
-    }
-  }
-}
-```
-
----
-
-## Natural Language Interaction Examples
-
-Once the server is running, you can interact with it through your AI assistant using plain English. Here are some examples of what you can say:
-
-### Indexing and Watching Files
-
--   **To index a new project:**
-    -   "Please index the code in the `/path/to/my-project` directory."
-    OR
-    -   "Add the project at `~/dev/my-other-project` to the code graph."
-
-
--   **To start watching a directory for live changes:**
-    -   "Watch the `/path/to/my-active-project` directory for changes."
-    OR
-    -   "Keep the code graph updated for the project I'm working on at `~/dev/main-app`."
-
-    When you ask to watch a directory, the system performs two actions at once:
-    1.  It kicks off a full scan to index all the code in that directory. This process runs in the background, and you'll receive a `job_id` to track its progress.
-    2.  It begins watching the directory for any file changes to keep the graph updated in real-time.
-
-    This means you can start by simply telling the system to watch a directory, and it will handle both the initial indexing and the continuous updates automatically.
-
-### Querying and Understanding Code
-
--   **Finding where code is defined:**
-    -   "Where is the `process_payment` function?"
-    -   "Find the `User` class for me."
-    -   "Show me any code related to 'database connection'."
-
--   **Analyzing relationships and impact:**
-    -   "What other functions call the `get_user_by_id` function?"
-    -   "If I change the `calculate_tax` function, what other parts of the code will be affected?"
-    -   "Show me the inheritance hierarchy for the `BaseController` class."
-    -   "What methods does the `Order` class have?"
-
--   **Exploring dependencies:**
-    -   "Which files import the `requests` library?"
-    -   "Find all implementations of the `render` method."
-
--   **Advanced Call Chain and Dependency Tracking (Spanning Hundreds of Files):**
-    The CodeGraphContext excels at tracing complex execution flows and dependencies across vast codebases. Leveraging the power of graph databases, it can identify direct and indirect callers and callees, even when a function is called through multiple layers of abstraction or across numerous files. This is invaluable for:
-    -   **Impact Analysis:** Understand the full ripple effect of a change to a core function.
-    -   **Debugging:** Trace the path of execution from an entry point to a specific bug.
-    -   **Code Comprehension:** Grasp how different parts of a large system interact.
-
-    -   "Show me the full call chain from the `main` function to `process_data`."
-    -   "Find all functions that directly or indirectly call `validate_input`."
-    -   "What are all the functions that `initialize_system` eventually calls?"
-    -   "Trace the dependencies of the `DatabaseManager` module."
-
--   **Code Quality and Maintenance:**
-    -   "Is there any dead or unused code in this project?"
-    -   "Calculate the cyclomatic complexity of the `process_data` function in `src/utils.py`."
-    -   "Find the 5 most complex functions in the codebase."
-
--   **Repository Management:**
-    -   "List all currently indexed repositories."
-    -   "Delete the indexed repository at `/path/to/old-project`."
-
----
-
-## Contributing
-
-Contributions are welcome! 🎉  
-Please see our [CONTRIBUTING.md](.github/CONTRIBUTING.md) for detailed guidelines.
-If you have ideas for new features, integrations, or improvements, open an [issue](https://github.com/CodeGraphContext/CodeGraphContext/issues) or submit a Pull Request.
-
-Join discussions and help shape the future of CodeGraphContext.
+Both features and all four bug fixes above ship with dedicated unit and
+integration tests (~1,300 lines added across `tests/unit/cli/`,
+`tests/unit/core/`, `tests/unit/server/`, and `tests/integration/`). After
+rebasing onto upstream `v0.5.1`, the full local suite is green modulo a
+handful of pre-existing failures confirmed present on a clean upstream
+checkout too (stale parser/embedding fixtures unrelated to this fork).
